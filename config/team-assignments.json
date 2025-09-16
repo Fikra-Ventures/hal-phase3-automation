@@ -1,0 +1,131 @@
+{
+  "team": {
+    "aria": {
+      "name": "Aria",
+      "role": "Memory Architecture Lead",
+      "email": "aria@fikra.ventures",
+      "slack": "@aria",
+      "timezone": "GST",
+      "workingHours": "08:00-18:00",
+      "skills": ["memory-systems", "database-design", "airtable-integration"],
+      "assignedTasks": [
+        "1.1", "2.3", "3.1", "8.1"
+      ]
+    },
+    "lex": {
+      "name": "Lex",
+      "role": "Safety & Guardrails Lead", 
+      "email": "lex@fikra.ventures",
+      "slack": "@lex",
+      "timezone": "GST",
+      "workingHours": "08:00-18:00",
+      "skills": ["safety-systems", "policy-framework", "llm-validation"],
+      "assignedTasks": [
+        "1.3", "3.2", "5.1", "5.2", "5.3", "6.1", "6.2", "6.3", "10.3"
+      ]
+    },
+    "mira": {
+      "name": "Mira",
+      "role": "Vector Storage & Search Lead",
+      "email": "mira@fikra.ventures", 
+      "slack": "@mira",
+      "timezone": "GST",
+      "workingHours": "08:00-18:00",
+      "skills": ["vector-storage", "embeddings", "semantic-search", "performance-optimization"],
+      "assignedTasks": [
+        "1.2", "2.1", "2.2", "3.3", "9.2"
+      ]
+    },
+    "zane": {
+      "name": "Zane",
+      "role": "Integration & Testing Lead",
+      "email": "zane@fikra.ventures",
+      "slack": "@zane", 
+      "timezone": "GST",
+      "workingHours": "08:00-18:00",
+      "skills": ["integration-testing", "quality-assurance", "performance-validation"],
+      "assignedTasks": [
+        "4.1", "8.2", "8.3", "10.1", "10.2"
+      ]
+    },
+    "kai": {
+      "name": "Kai",
+      "role": "DevOps & Monitoring Lead",
+      "email": "kai@fikra.ventures",
+      "slack": "@kai",
+      "timezone": "GST", 
+      "workingHours": "08:00-18:00",
+      "skills": ["ci-cd", "monitoring", "dashboards", "alerting"],
+      "assignedTasks": [
+        "7.1", "7.2", "9.1", "9.3"
+      ]
+    },
+    "nico": {
+      "name": "Nico",
+      "role": "Infrastructure Support",
+      "email": "nico@fikra.ventures",
+      "slack": "@nico",
+      "timezone": "GST",
+      "workingHours": "08:00-18:00", 
+      "skills": ["infrastructure", "deployment", "automation"],
+      "assignedTasks": []
+    },
+    "lena": {
+      "name": "Lena",
+      "role": "Quality Assurance Lead",
+      "email": "lena@fikra.ventures",
+      "slack": "@lena",
+      "timezone": "GST",
+      "workingHours": "08:00-18:00",
+      "skills": ["user-acceptance", "quality-assurance", "testing"],
+      "assignedTasks": [
+        "10.4"
+      ]
+    }
+  },
+  "taskAssignments": {
+    "week1": {
+      "1.1": { "owner": "aria", "priority": "high", "estimatedHours": 4 },
+      "1.2": { "owner": "mira", "priority": "high", "estimatedHours": 4 },
+      "1.3": { "owner": "lex", "priority": "medium", "estimatedHours": 6 },
+      "2.1": { "owner": "mira", "priority": "high", "estimatedHours": 6 },
+      "2.2": { "owner": "mira", "priority": "critical", "estimatedHours": 8 },
+      "2.3": { "owner": "aria", "priority": "medium", "estimatedHours": 4 },
+      "3.1": { "owner": "aria", "priority": "high", "estimatedHours": 6 },
+      "3.2": { "owner": "lex", "priority": "medium", "estimatedHours": 4 },
+      "3.3": { "owner": "mira", "priority": "high", "estimatedHours": 6 },
+      "4.1": { "owner": "zane", "priority": "critical", "estimatedHours": 8 }
+    },
+    "week2": {
+      "5.1": { "owner": "lex", "priority": "critical", "estimatedHours": 6 },
+      "5.2": { "owner": "lex", "priority": "high", "estimatedHours": 4 },
+      "5.3": { "owner": "lex", "priority": "high", "estimatedHours": 4 },
+      "6.1": { "owner": "lex", "priority": "critical", "estimatedHours": 6 },
+      "6.2": { "owner": "lex", "priority": "critical", "estimatedHours": 6 },
+      "6.3": { "owner": "lex", "priority": "critical", "estimatedHours": 8 },
+      "7.1": { "owner": "kai", "priority": "high", "estimatedHours": 4 },
+      "7.2": { "owner": "kai", "priority": "medium", "estimatedHours": 4 }
+    },
+    "week3": {
+      "8.1": { "owner": "aria", "priority": "high", "estimatedHours": 4 },
+      "8.2": { "owner": "zane", "priority": "high", "estimatedHours": 6 },
+      "8.3": { "owner": "zane", "priority": "medium", "estimatedHours": 6 },
+      "9.1": { "owner": "kai", "priority": "critical", "estimatedHours": 8 },
+      "9.2": { "owner": "mira", "priority": "critical", "estimatedHours": 6 },
+      "9.3": { "owner": "kai", "priority": "high", "estimatedHours": 4 },
+      "10.1": { "owner": "zane", "priority": "critical", "estimatedHours": 12 },
+      "10.2": { "owner": "zane", "priority": "critical", "estimatedHours": 4 },
+      "10.3": { "owner": "lex", "priority": "critical", "estimatedHours": 4 },
+      "10.4": { "owner": "lena", "priority": "high", "estimatedHours": 4 }
+    }
+  },
+  "workloadDistribution": {
+    "aria": { "totalTasks": 4, "totalHours": 20, "weeks": [1, 3] },
+    "lex": { "totalTasks": 9, "totalHours": 42, "weeks": [1, 2, 3] },
+    "mira": { "totalTasks": 5, "totalHours": 30, "weeks": [1, 3] },
+    "zane": { "totalTasks": 5, "totalHours": 40, "weeks": [1, 3] },
+    "kai": { "totalTasks": 4, "totalHours": 20, "weeks": [2, 3] },
+    "nico": { "totalTasks": 0, "totalHours": 0, "weeks": [] },
+    "lena": { "totalTasks": 1, "totalHours": 4, "weeks": [3] }
+  }
+}
