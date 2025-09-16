@@ -1,0 +1,226 @@
+name: HAL Phase 3 - Automated Task Execution
+on:
+  schedule:
+    # Run daily at 8:00 AM GST (4:00 AM UTC)
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      force_task:
+        description: 'Force execute specific task (e.g., Task 1.1)'
+        required: false
+        type: string
+      week:
+        description: 'Execute specific week (1, 2, or 3)'
+        required: false
+        type: choice
+        options:
+          - '1'
+          - '2' 
+          - '3'
+
+env:
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
+
+jobs:
+  task-scheduler:
+    name: Daily Task Scheduler
+    runs-on: ubuntu-latest
+    outputs:
+      tasks-to-execute: ${{ steps.scheduler.outputs.tasks }}
+      current-week: ${{ steps.scheduler.outputs.week }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install Dependencies  
+        run: |
+          npm install axios chalk moment
+          
+      - name: Calculate Daily Tasks
+        id: scheduler
+        run: |
+          node automation/task-scheduler.js
+          
+      - name: Notify Slack - Daily Start
+        if: success()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"🚀 **HAL Phase 3 - Daily Automation Started**\n\n**Date:** '$(date)'\n**Current Week:** ${{ steps.scheduler.outputs.week }}\n**Tasks Scheduled:** ${{ steps.scheduler.outputs.tasks }}\n\n**Status:** Executing automated task pipeline..."}' \
+            $SLACK_WEBHOOK_URL
+
+  week1-memory-management:
+    name: Week 1 - Memory Management
+    needs: task-scheduler
+    if: contains(needs.task-scheduler.outputs.current-week, '1')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: [
+          "1.1-schema-design",
+          "1.2-vector-storage-research", 
+          "1.3-memory-scoping-framework",
+          "2.1-embeddings-service-setup",
+          "2.2-semantic-search-engine",
+          "2.3-memory-indexing-system",
+          "3.1-airtable-memory-integration",
+          "3.2-memory-access-controls",
+          "3.3-memory-retrieval-optimization",
+          "4.1-memory-service-integration-testing"
+        ]
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Setup Task Environment
+        run: |
+          echo "Executing Memory Management Task: ${{ matrix.task }}"
+          mkdir -p logs/${{ matrix.task }}
+          
+      - name: Execute Task
+        id: execute
+        run: |
+          node automation/execute-task.js ${{ matrix.task }}
+        continue-on-error: true
+        
+      - name: Validate Task Completion  
+        run: |
+          node automation/validate-task.js ${{ matrix.task }}
+          
+      - name: Update Progress
+        if: always()
+        run: |
+          node automation/update-progress.js ${{ matrix.task }} "${{ steps.execute.outcome }}"
+          
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.task }}
+          path: logs/${{ matrix.task }}/
+
+  week2-guardrails-safety:
+    name: Week 2 - Guardrails & Safety
+    needs: [task-scheduler, week1-memory-management]
+    if: contains(needs.task-scheduler.outputs.current-week, '2')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: [
+          "5.1-policy-framework-design",
+          "5.2-llm-judge-configuration",
+          "5.3-escalation-workflow-design",
+          "6.1-input-sanitization-pipeline",
+          "6.2-output-filtering-system", 
+          "6.3-realtime-safety-validation",
+          "7.1-ci-integration-enhancement",
+          "7.2-safety-metrics-dashboard"
+        ]
+    
+    steps:
+      - name: Checkout Code  
+        uses: actions/checkout@v4
+        
+      - name: Setup Task Environment
+        run: |
+          echo "Executing Guardrails Task: ${{ matrix.task }}"
+          mkdir -p logs/${{ matrix.task }}
+          
+      - name: Execute Task
+        id: execute
+        run: |
+          node automation/execute-task.js ${{ matrix.task }}
+        continue-on-error: true
+        
+      - name: Validate Task Completion
+        run: |
+          node automation/validate-task.js ${{ matrix.task }}
+          
+      - name: Update Progress
+        if: always()
+        run: |
+          node automation/update-progress.js ${{ matrix.task }} "${{ steps.execute.outcome }}"
+
+  week3-performance-integration:
+    name: Week 3 - Performance & Integration  
+    needs: [task-scheduler, week2-guardrails-safety]
+    if: contains(needs.task-scheduler.outputs.current-week, '3')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        task: [
+          "8.1-performance-metrics-schema",
+          "8.2-task-outcome-tracking",
+          "8.3-quality-assessment-framework", 
+          "9.1-realtime-performance-dashboard",
+          "9.2-drift-detection-system",
+          "9.3-automated-alerting-system",
+          "10.1-end-to-end-integration-testing",
+          "10.2-performance-validation",
+          "10.3-security-safety-testing",
+          "10.4-user-acceptance-testing"
+        ]
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Setup Task Environment
+        run: |
+          echo "Executing Performance Task: ${{ matrix.task }}"
+          mkdir -p logs/${{ matrix.task }}
+          
+      - name: Execute Task
+        id: execute
+        run: |
+          node automation/execute-task.js ${{ matrix.task }}
+        continue-on-error: true
+        
+      - name: Validate Task Completion
+        run: |
+          node automation/validate-task.js ${{ matrix.task }}
+          
+      - name: Update Progress
+        if: always()
+        run: |
+          node automation/update-progress.js ${{ matrix.task }} "${{ steps.execute.outcome }}"
+
+  daily-report:
+    name: Daily Progress Report
+    needs: [task-scheduler, week1-memory-management, week2-guardrails-safety, week3-performance-integration]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Generate Daily Report
+        run: |
+          node automation/generate-report.js
+          
+      - name: Send Slack Update
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data @automation/daily-report.json \
+            $SLACK_WEBHOOK_URL
+            
+      - name: Check Critical Path
+        run: |
+          node automation/check-critical-path.js
+          
+      - name: Escalate Issues
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"🚨 **CRITICAL ALERT** - HAL Phase 3 Automation Issues Detected\n\n**Date:** '$(date)'\n**Status:** REQUIRES IMMEDIATE ATTENTION\n**Action Required:** Check GitHub Actions logs and resolve blockers\n\n**Critical Path:** Potentially impacted - October 1st deadline at risk"}' \
+            $SLACK_WEBHOOK_URL
