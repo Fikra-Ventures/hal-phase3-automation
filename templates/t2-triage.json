@@ -1,0 +1,250 @@
+{
+  "name": "T2 Ticket Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "t2-triage",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        180,
+        300
+      ],
+      "webhookId": "{{ $env.N8N_WEBHOOK_SECRET }}",
+      "description": "HTTP webhook trigger for T2 ticket triage"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "priority-check",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "P0,P1",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "priority-router",
+      "name": "Priority Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ],
+      "description": "Route based on priority (P0/P1 vs P2/P3)"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $env.SLACK_CHANNEL_ID_SUPPORT }}",
+          "mode": "id"
+        },
+        "text": "🔴 **URGENT TICKET** - {{ $json.priority }}\n\n@here\n\n**Title:** {{ $json.title }}\n**Reporter:** {{ $json.reporter }}\n**Product:** {{ $json.product }}\n**Description:** {{ $json.description }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "urgent-slack-alert",
+      "name": "Urgent Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        620,
+        200
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-bot-token",
+          "name": "Slack Bot Token"
+        }
+      },
+      "description": "High priority alert with @here mention"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $env.SLACK_CHANNEL_ID_SUPPORT }}",
+          "mode": "id"
+        },
+        "text": "🟠 **New Ticket** - {{ $json.priority }}\n\n**Title:** {{ $json.title }}\n**Reporter:** {{ $json.reporter }}\n**Product:** {{ $json.product }}\n**Description:** {{ $json.description }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "normal-slack-notification",
+      "name": "Normal Slack Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        620,
+        400
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-bot-token",
+          "name": "Slack Bot Token"
+        }
+      },
+      "description": "Standard notification without @here"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "={{ $env.AIRTABLE_BASE_ID }}",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "={{ $env.AIRTABLE_TABLE_TICKETS }}",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json.id }}",
+            "Title": "={{ $json.title }}",
+            "Description": "={{ $json.description }}",
+            "Priority": "={{ $json.priority }}",
+            "Reporter": "={{ $json.reporter }}",
+            "Product": "={{ $json.product }}",
+            "Status": "Open",
+            "Created": "={{ $now }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "create-airtable-ticket",
+      "name": "Create Airtable Ticket",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        840,
+        300
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "airtable-api-key",
+          "name": "Airtable API Key"
+        }
+      },
+      "description": "Create ticket record in Airtable"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"ticketId\": \"{{ $json.id }}\",\n  \"ticketUrl\": \"https://airtable.com/{{ $env.AIRTABLE_BASE_ID }}/{{ $env.AIRTABLE_TABLE_TICKETS }}/{{ $json.id }}\",\n  \"priority\": \"{{ $json.priority }}\",\n  \"status\": \"created\",\n  \"timestamp\": \"{{ $now }}\"\n}",
+        "options": {}
+      },
+      "id": "response-node",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        300
+      ],
+      "description": "Return success response with ticket URL"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Priority Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Priority Router": {
+      "main": [
+        [
+          {
+            "node": "Urgent Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normal Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Create Airtable Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normal Slack Notification": {
+      "main": [
+        [
+          {
+            "node": "Create Airtable Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Airtable Ticket": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0",
+  "tags": ["triage", "tickets", "support"]
+}

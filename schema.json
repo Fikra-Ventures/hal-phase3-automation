@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "n8n Workflow Schema",
+  "description": "JSON schema for validating n8n workflow files",
+  "type": "object",
+  "required": ["name", "nodes", "connections"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the workflow"
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Array of workflow nodes",
+      "items": {
+        "type": "object",
+        "required": ["parameters", "name", "type", "typeVersion", "position"],
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "description": "Node-specific parameters"
+          },
+          "name": {
+            "type": "string",
+            "description": "Node name"
+          },
+          "type": {
+            "type": "string", 
+            "description": "Node type"
+          },
+          "typeVersion": {
+            "type": "number",
+            "description": "Version of the node type"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Node position [x, y]"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique node identifier"
+          },
+          "credentials": {
+            "type": "object",
+            "description": "Node credentials configuration"
+          },
+          "description": {
+            "type": "string",
+            "description": "Node description"
+          }
+        }
+      }
+    },
+    "connections": {
+      "type": "object",
+      "description": "Node connections",
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "node": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "index": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether the workflow is active"
+    },
+    "settings": {
+      "type": "object",
+      "description": "Workflow settings"
+    },
+    "staticData": {
+      "type": "object",
+      "description": "Static data for the workflow"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Workflow tags"
+    },
+    "triggerCount": {
+      "type": "number",
+      "description": "Number of times the workflow has been triggered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last updated timestamp"
+    },
+    "versionId": {
+      "type": "string",
+      "description": "Version identifier"
+    }
+  }
+}
