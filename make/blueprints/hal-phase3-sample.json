@@ -1,6 +1,6 @@
 {
   "name": "HAL Phase 3 - Sample Automation Blueprint",
-  "description": "Sample Make.com blueprint for HAL Phase 3 automation integration",
+  "description": "Updated sample Make.com blueprint for HAL Phase 3 automation integration",
   "version": "1.0.0",
   "blueprint": {
     "modules": [
