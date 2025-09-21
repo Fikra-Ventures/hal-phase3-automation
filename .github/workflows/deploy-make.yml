@@ -1,0 +1,55 @@
+name: Deploy Make.com Blueprints
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'make/blueprints/**/*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-blueprints:
+    name: Deploy Make.com Blueprints
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.modified, 'make/blueprints/') || contains(github.event.head_commit.added, 'make/blueprints/') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Get changed files
+        id: changed-files
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # For manual triggers, deploy all blueprint files
+            find make/blueprints -name "*.json" -type f | head -20 > changed_files.txt
+          else
+            # For push events, get changed files
+            git diff --name-only ${{ github.event.before }}..${{ github.event.after }} | grep "^make/blueprints/.*\.json$" > changed_files.txt || touch changed_files.txt
+          fi
+          
+          echo "Changed blueprint files:"
+          cat changed_files.txt
+      
+      - name: Deploy blueprints to Make.com
+        if: hashFiles('changed_files.txt') != ''
+        env:
+          MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
+          MAKE_TEAM_ID: ${{ secrets.MAKE_TEAM_ID }}
+        run: |
+          cat changed_files.txt | node scripts/make-deploy.js

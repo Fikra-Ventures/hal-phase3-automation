@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "scenario": {
+    "name": "HAL Phase 3 - Task Automation",
+    "description": "Automated task execution and monitoring for HAL Phase 3 project",
+    "modules": [
+      {
+        "module": "http",
+        "version": 1,
+        "parameters": {
+          "url": "https://api.github.com/repos/fikra-hal/hal-phase3-automation/actions/workflows",
+          "method": "GET",
+          "headers": [
+            {
+              "name": "Authorization",
+              "value": "token {{github.token}}"
+            },
+            {
+              "name": "Accept", 
+              "value": "application/vnd.github.v3+json"
+            }
+          ]
+        },
+        "mapper": {},
+        "metadata": {
+          "expect": [
+            {
+              "name": "url",
+              "type": "url"
+            },
+            {
+              "name": "method",
+              "type": "select"
+            }
+          ]
+        }
+      },
+      {
+        "module": "slack",
+        "version": 1,
+        "parameters": {
+          "webhook": "{{slack.webhook}}",
+          "text": "HAL Phase 3 automation triggered: {{1.data.workflow_runs[0].status}}"
+        },
+        "mapper": {
+          "text": "HAL Phase 3 automation triggered: {{1.data.workflow_runs[0].status}}"
+        },
+        "metadata": {
+          "expect": [
+            {
+              "name": "webhook",
+              "type": "url"
+            },
+            {
+              "name": "text",
+              "type": "text"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
