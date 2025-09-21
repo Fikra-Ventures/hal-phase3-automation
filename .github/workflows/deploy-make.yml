@@ -50,30 +50,18 @@ jobs:
         env:
           MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
           MAKE_TEAM_ID:   ${{ secrets.MAKE_TEAM_ID }}
-          # Optional override (e.g., us1). If not set, default to EU since your org is eu2.
-          MAKE_API_BASE:  ${{ secrets.MAKE_API_BASE }}
+          MAKE_API_BASE:  ${{ secrets.MAKE_API_BASE }}   # set this to https://eu2.make.com/api/v2 in repo secrets
         shell: bash
         run: |
           set -euo pipefail
-
-          # Default base URL to EU region when not explicitly set.
-          API_BASE="${MAKE_API_BASE:-https://eu2.make.com/api/v2}"
-          IMPORT_URL="${API_BASE%/}/blueprints/import"
-
-          echo "Using Make API: $IMPORT_URL"
-
-          if [[ -z "${MAKE_API_TOKEN:-}" || -z "${MAKE_TEAM_ID:-}" ]]; then
-            echo "❌ Missing MAKE_API_TOKEN or MAKE_TEAM_ID secrets."
-            exit 1
-          fi
+          API="${MAKE_API_BASE:-https://eu2.make.com/api/v2}"   # default to EU2 since your workspace is eu2
+          echo "Using Make API: $API/blueprints/import"
 
           echo "${{ steps.files.outputs.files }}" | while read -r f; do
             [[ -z "$f" ]] && continue
             echo "➡️  Importing $f"
-
-            # POST blueprint JSON to Make Import API
             curl -sS --retry 3 --retry-delay 2 \
-              -X POST "$IMPORT_URL" \
+              -X POST "$API/blueprints/import" \
               -H "Authorization: Token ${MAKE_API_TOKEN}" \
               -H "X-Team-Id: ${MAKE_TEAM_ID}" \
               -H "Content-Type: application/json" \
@@ -85,7 +73,7 @@ jobs:
               echo "✅ Imported $f (HTTP $code)"
               echo "IDs:"; jq -r '.items[]?.id // .id // empty' resp.json || true
             else
-              echo "❌ Import failed for $f (HTTP $code)"
+              echo "❌ Import failed for $f (HTTP $code) — response body (truncated):"
               head -c 2000 resp.json || true
               exit 1
             fi
