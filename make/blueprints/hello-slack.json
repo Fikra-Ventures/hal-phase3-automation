@@ -1,0 +1,139 @@
+{
+  "name": "Hello Slack Automation",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "restore": {},
+        "parameters": [
+          {
+            "name": "handleErrors",
+            "type": "boolean",
+            "label": "Evaluate all states as errors (except for 2XX and 3XX )",
+            "required": false
+          }
+        ],
+        "expect": [
+          {
+            "name": "url",
+            "type": "url",
+            "label": "URL",
+            "required": true
+          },
+          {
+            "name": "serializeUrl",
+            "type": "boolean",
+            "label": "Serialize URL",
+            "required": false
+          },
+          {
+            "name": "method",
+            "type": "select",
+            "label": "Method",
+            "required": true,
+            "validate": {
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+                "HEAD"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "slack:ActionPostMessage",
+      "version": 1,
+      "parameters": {
+        "connection": "SlackConnection01"
+      },
+      "mapper": {
+        "channel": "",
+        "text": "Hello from Make automation!",
+        "username": "HAL Bot",
+        "icon_emoji": ":robot_face:"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        },
+        "restore": {
+          "connection": {
+            "label": "SlackConnection01"
+          }
+        },
+        "parameters": [
+          {
+            "name": "connection",
+            "type": "account",
+            "label": "Connection",
+            "required": true
+          }
+        ],
+        "expect": [
+          {
+            "name": "channel",
+            "type": "select",
+            "label": "Channel",
+            "required": true
+          },
+          {
+            "name": "text",
+            "type": "text",
+            "label": "Text",
+            "required": false
+          },
+          {
+            "name": "username",
+            "type": "text",
+            "label": "Username",
+            "required": false
+          },
+          {
+            "name": "icon_emoji",
+            "type": "text",
+            "label": "Icon emoji",
+            "required": false
+          }
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "slots": 1,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "us1.make.com"
+  }
+}
