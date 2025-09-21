@@ -1,0 +1,98 @@
+{
+  "name": "HAL Phase 3 - Error Monitoring Blueprint",
+  "description": "Make.com blueprint for monitoring and responding to HAL Phase 3 errors",
+  "version": "1.0.0",
+  "blueprint": {
+    "modules": [
+      {
+        "id": 1,
+        "module": "webhook:Webhook",
+        "version": 1,
+        "parameters": {
+          "hook": {
+            "name": "hal-phase3-error-webhook",
+            "dataStructure": [
+              {
+                "name": "error",
+                "type": "text"
+              },
+              {
+                "name": "severity",
+                "type": "text"
+              },
+              {
+                "name": "timestamp",
+                "type": "date"
+              },
+              {
+                "name": "context",
+                "type": "collection"
+              }
+            ]
+          }
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 2,
+        "module": "filter:Filter",
+        "version": 1,
+        "parameters": {
+          "condition": "{{1.severity}} = 'critical'"
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 300,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 3,
+        "module": "slack:ActionSendMessage",
+        "version": 1,
+        "parameters": {
+          "channel": "hal-phase3-automation"
+        },
+        "mapper": {
+          "text": "🚨 CRITICAL HAL ERROR: {{1.error}} at {{1.timestamp}}\nRequires immediate attention!"
+        },
+        "metadata": {
+          "designer": {
+            "x": 600,
+            "y": 0
+          }
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": 1,
+        "srcModuleId": 1,
+        "srcPortId": 1,
+        "destModuleId": 2,
+        "destPortId": 1
+      },
+      {
+        "id": 2,
+        "srcModuleId": 2,
+        "srcPortId": 1,
+        "destModuleId": 3,
+        "destPortId": 1
+      }
+    ]
+  },
+  "metadata": {
+    "created": "2024-09-21T19:18:00Z",
+    "author": "HAL Automation System",
+    "tags": ["hal", "phase3", "error", "monitoring", "critical"],
+    "category": "monitoring"
+  }
+}
