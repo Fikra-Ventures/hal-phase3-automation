@@ -1,0 +1,69 @@
+name: Deploy Make.com Blueprints
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'make/blueprints/*.json'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-blueprints:
+    name: Deploy Make.com Blueprints
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Fetch current and previous commit to detect changes
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm install
+      
+      - name: Find Changed Blueprint Files
+        id: changed-files
+        run: |
+          echo "Finding files changed in the last commit under make/blueprints/*.json"
+          
+          # Get list of changed files in the last commit that match make/blueprints/*.json
+          changed_files=$(git diff --name-only HEAD~ HEAD | grep '^make/blueprints/.*\.json$' || true)
+          
+          if [ -z "$changed_files" ]; then
+            echo "No blueprint files changed in the last commit"
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "files=" >> $GITHUB_OUTPUT
+          else
+            echo "Changed blueprint files:"
+            echo "$changed_files"
+            
+            # Save files to a temporary file for piping to the deploy script
+            echo "$changed_files" > /tmp/changed_blueprint_files.txt
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "files<<EOF" >> $GITHUB_OUTPUT
+            echo "$changed_files" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Deploy Changed Blueprints
+        if: steps.changed-files.outputs.changed == 'true'
+        env:
+          MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
+          MAKE_TEAM_ID: ${{ secrets.MAKE_TEAM_ID }}
+        run: |
+          echo "Deploying changed blueprint files to Make.com..."
+          cat /tmp/changed_blueprint_files.txt | node scripts/make-deploy.js
+      
+      - name: No Changes
+        if: steps.changed-files.outputs.changed == 'false'
+        run: |
+          echo "No blueprint files were changed in the last commit. Skipping deployment."

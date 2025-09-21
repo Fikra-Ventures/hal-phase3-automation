@@ -1,0 +1,117 @@
+{
+  "name": "HAL Phase 3 - Sample Automation Blueprint",
+  "description": "Sample Make.com blueprint for HAL Phase 3 automation integration",
+  "version": "1.0.0",
+  "blueprint": {
+    "modules": [
+      {
+        "id": 1,
+        "module": "webhook:Webhook",
+        "version": 1,
+        "parameters": {
+          "hook": {
+            "name": "hal-phase3-webhook",
+            "dataStructure": [
+              {
+                "name": "event",
+                "type": "text"
+              },
+              {
+                "name": "phase",
+                "type": "number"
+              },
+              {
+                "name": "timestamp",
+                "type": "date"
+              },
+              {
+                "name": "data",
+                "type": "collection"
+              }
+            ]
+          }
+        },
+        "mapper": {},
+        "metadata": {
+          "designer": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 2,
+        "module": "json:ParseJSON",
+        "version": 1,
+        "parameters": {
+          "dataStructure": [
+            {
+              "name": "taskId",
+              "type": "text"
+            },
+            {
+              "name": "status",
+              "type": "text"
+            },
+            {
+              "name": "owner",
+              "type": "text"
+            },
+            {
+              "name": "completedAt",
+              "type": "date"
+            }
+          ]
+        },
+        "mapper": {
+          "json": "{{1.data}}"
+        },
+        "metadata": {
+          "designer": {
+            "x": 300,
+            "y": 0
+          }
+        }
+      },
+      {
+        "id": 3,
+        "module": "slack:ActionSendMessage",
+        "version": 1,
+        "parameters": {
+          "channel": "hal-phase3-automation"
+        },
+        "mapper": {
+          "text": "🤖 HAL Phase 3 Update: Task {{2.taskId}} completed by {{2.owner}} at {{2.completedAt}}"
+        },
+        "metadata": {
+          "designer": {
+            "x": 600,
+            "y": 0
+          }
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": 1,
+        "srcModuleId": 1,
+        "srcPortId": 1,
+        "destModuleId": 2,
+        "destPortId": 1
+      },
+      {
+        "id": 2,
+        "srcModuleId": 2,
+        "srcPortId": 1,
+        "destModuleId": 3,
+        "destPortId": 1
+      }
+    ]
+  },
+  "metadata": {
+    "created": "2024-09-21T19:17:00Z",
+    "author": "HAL Automation System",
+    "tags": ["hal", "phase3", "automation", "webhook", "slack"],
+    "category": "automation"
+  }
+}
