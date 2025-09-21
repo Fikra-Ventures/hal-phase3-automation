@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "name": "hello-slack",
+    "description": "Send Hello World to Slack"
+  },
+  "modules": [
+    {
+      "id": 1,
+      "name": "Slack > Post a Message",
+      "type": "slack.postMessage",
+      "params": {
+        "channel": "general",
+        "text": "Hello from GitHub → Make → Slack!"
+      }
+    }
+  ],
+  "connections": []
+}
