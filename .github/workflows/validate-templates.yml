@@ -1,0 +1,193 @@
+name: Validate Templates
+
+on:
+  push:
+    paths:
+      - 'templates/**/*.json'
+      - '.github/workflows/validate-templates.yml'
+  pull_request:
+    paths:
+      - 'templates/**/*.json'
+      - '.github/workflows/validate-templates.yml'
+
+jobs:
+  validate-templates:
+    name: Validate n8n Template Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install Dependencies
+        run: |
+          npm install
+          npm install -g ajv-cli
+          
+      - name: Validate Template Schema
+        run: |
+          echo "🔍 Validating n8n workflow templates against schema..."
+          
+          # Check if templates directory exists
+          if [ ! -d "templates" ]; then
+            echo "❌ Templates directory not found"
+            exit 1
+          fi
+          
+          # Check if schema exists
+          if [ ! -f "templates/schema.json" ]; then
+            echo "❌ Schema file not found at templates/schema.json"
+            exit 1
+          fi
+          
+          # Validate schema itself
+          echo "📋 Validating schema file..."
+          ajv validate -s http://json-schema.org/draft-07/schema# -d templates/schema.json
+          
+          # Find and validate all template JSON files (excluding schema and examples)
+          TEMPLATE_FILES=$(find templates -name "*.json" -not -path "*/examples/*" -not -name "schema.json")
+          
+          if [ -z "$TEMPLATE_FILES" ]; then
+            echo "⚠️ No template files found to validate"
+            exit 0
+          fi
+          
+          echo "📁 Found template files:"
+          echo "$TEMPLATE_FILES" | sed 's/^/  - /'
+          
+          # Validate each template file
+          VALIDATION_FAILED=false
+          for template in $TEMPLATE_FILES; do
+            echo ""
+            echo "🔍 Validating $template..."
+            if ajv validate -s templates/schema.json -d "$template"; then
+              echo "✅ $template is valid"
+            else
+              echo "❌ $template failed validation"
+              VALIDATION_FAILED=true
+            fi
+          done
+          
+          if [ "$VALIDATION_FAILED" = true ]; then
+            echo ""
+            echo "❌ Template validation failed"
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ All templates validated successfully"
+          
+      - name: Validate Template Structure
+        run: |
+          echo "🏗️ Validating template structure requirements..."
+          
+          # Check for required fields and n8n-specific validations
+          for template in $(find templates -name "*.json" -not -path "*/examples/*" -not -name "schema.json"); do
+            echo "📋 Checking $template structure..."
+            
+            # Validate nodes have required webhook properties
+            if ! node -e "
+              const fs = require('fs');
+              const template = JSON.parse(fs.readFileSync('$template', 'utf8'));
+              
+              // Check for webhook nodes
+              const webhookNodes = template.nodes.filter(node => node.type.includes('webhook'));
+              if (webhookNodes.length === 0) {
+                console.log('⚠️ No webhook nodes found');
+                process.exit(0);
+              }
+              
+              // Validate webhook nodes
+              for (const node of webhookNodes) {
+                if (!node.parameters) {
+                  console.log('❌ Webhook node missing parameters');
+                  process.exit(1);
+                }
+                
+                // Check for environment variable usage (no inline secrets)
+                const paramsStr = JSON.stringify(node.parameters);
+                if (paramsStr.includes('secret') && !paramsStr.includes('{{') && !paramsStr.includes('ENV')) {
+                  console.log('❌ Webhook node contains inline secrets');
+                  process.exit(1);
+                }
+                
+                // Check for concise notes
+                if (node.notes && node.notes.length > 200) {
+                  console.log('❌ Node notes too long (max 200 characters)');
+                  process.exit(1);
+                }
+              }
+              
+              console.log('✅ Webhook validation passed');
+            "; then
+              echo "✅ $template structure validation passed"
+            else
+              echo "❌ $template structure validation failed"
+              exit 1
+            fi
+          done
+          
+      - name: Validate Examples
+        run: |
+          echo "📖 Validating example files..."
+          
+          if [ -d "templates/examples" ]; then
+            for example in templates/examples/*.json; do
+              if [ -f "$example" ]; then
+                echo "🔍 Validating example: $example"
+                
+                # Validate JSON syntax
+                if ! node -e "JSON.parse(require('fs').readFileSync('$example', 'utf8'))"; then
+                  echo "❌ $example has invalid JSON syntax"
+                  exit 1
+                fi
+                
+                echo "✅ $example is valid JSON"
+              fi
+            done
+          else
+            echo "⚠️ No examples directory found"
+          fi
+          
+      - name: Generate Validation Report
+        if: always()
+        run: |
+          echo "📊 Template Validation Report" > validation-report.md
+          echo "=========================" >> validation-report.md
+          echo "" >> validation-report.md
+          echo "**Validation Date:** $(date)" >> validation-report.md
+          echo "**Branch:** ${{ github.ref_name }}" >> validation-report.md
+          echo "**Commit:** ${{ github.sha }}" >> validation-report.md
+          echo "" >> validation-report.md
+          
+          # Count templates
+          TEMPLATE_COUNT=$(find templates -name "*.json" -not -path "*/examples/*" -not -name "schema.json" | wc -l)
+          EXAMPLE_COUNT=$(find templates/examples -name "*.json" 2>/dev/null | wc -l || echo 0)
+          
+          echo "**Templates Validated:** $TEMPLATE_COUNT" >> validation-report.md
+          echo "**Examples Validated:** $EXAMPLE_COUNT" >> validation-report.md
+          echo "" >> validation-report.md
+          
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "**Status:** ✅ All validations passed" >> validation-report.md
+          else
+            echo "**Status:** ❌ Validation failures detected" >> validation-report.md
+          fi
+          
+          echo "" >> validation-report.md
+          echo "**Schema Location:** \`templates/schema.json\`" >> validation-report.md
+          echo "**Workflow:** \`.github/workflows/validate-templates.yml\`" >> validation-report.md
+          
+      - name: Upload Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-validation-report
+          path: validation-report.md
+          retention-days: 30

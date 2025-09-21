@@ -1,0 +1,70 @@
+{
+  "name": "Echo Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "echo",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        },
+        "authentication": "headerAuth",
+        "authPropertyName": "x-webhook-secret",
+        "authValue": "={{ $env.N8N_WEBHOOK_SECRET }}"
+      },
+      "name": "Echo Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "id": "echo-webhook-node",
+      "notes": "Receives HTTP POST requests and returns payload with metadata. Requires N8N_WEBHOOK_SECRET env var.",
+      "webhookId": "echo-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"ok\": true,\n  \"receivedAt\": new Date().toISOString(),\n  \"payload\": $json\n} }}"
+      },
+      "name": "Respond with Echo",
+      "type": "n8n-nodes-base.respondToWebhook", 
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "id": "respond-echo-node",
+      "notes": "Returns received JSON with ok: true and timestamp"
+    }
+  ],
+  "connections": {
+    "Echo Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond with Echo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "createdAt": "2024-09-21T18:33:00.000Z",
+  "updatedAt": "2024-09-21T18:33:00.000Z",
+  "staticData": {},
+  "active": false,
+  "tags": [
+    "webhook",
+    "echo",
+    "smoke-test"
+  ],
+  "settings": {
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  }
+}

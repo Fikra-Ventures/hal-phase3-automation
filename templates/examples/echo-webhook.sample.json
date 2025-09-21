@@ -1,0 +1,142 @@
+{
+  "description": "Echo Webhook Request/Response Examples",
+  "examples": [
+    {
+      "name": "Simple Echo Test",
+      "request": {
+        "method": "POST",
+        "url": "https://your-n8n-instance.com/webhook/echo",
+        "headers": {
+          "Content-Type": "application/json",
+          "x-webhook-secret": "your-secret-here"
+        },
+        "body": {
+          "message": "Hello, Echo Webhook!",
+          "test": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "ok": true,
+          "receivedAt": "2024-09-21T18:33:15.123Z",
+          "payload": {
+            "message": "Hello, Echo Webhook!",
+            "test": true
+          }
+        }
+      }
+    },
+    {
+      "name": "Complex Data Structure",
+      "request": {
+        "method": "POST",
+        "url": "https://your-n8n-instance.com/webhook/echo",
+        "headers": {
+          "Content-Type": "application/json",
+          "x-webhook-secret": "your-secret-here"
+        },
+        "body": {
+          "user": {
+            "id": 12345,
+            "name": "John Doe",
+            "email": "john@example.com"
+          },
+          "metadata": {
+            "source": "api",
+            "version": "1.0",
+            "tags": ["test", "webhook", "echo"]
+          },
+          "timestamp": "2024-09-21T18:30:00Z",
+          "data": {
+            "items": [
+              {"id": 1, "value": "first"},
+              {"id": 2, "value": "second"}
+            ],
+            "count": 2,
+            "active": true
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "ok": true,
+          "receivedAt": "2024-09-21T18:33:25.456Z",
+          "payload": {
+            "user": {
+              "id": 12345,
+              "name": "John Doe",
+              "email": "john@example.com"
+            },
+            "metadata": {
+              "source": "api",
+              "version": "1.0",
+              "tags": ["test", "webhook", "echo"]
+            },
+            "timestamp": "2024-09-21T18:30:00Z",
+            "data": {
+              "items": [
+                {"id": 1, "value": "first"},
+                {"id": 2, "value": "second"}
+              ],
+              "count": 2,
+              "active": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Minimal Test",
+      "request": {
+        "method": "POST", 
+        "url": "https://your-n8n-instance.com/webhook/echo",
+        "headers": {
+          "Content-Type": "application/json",
+          "x-webhook-secret": "your-secret-here"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "ok": true,
+          "receivedAt": "2024-09-21T18:33:30.789Z",
+          "payload": {}
+        }
+      }
+    }
+  ],
+  "curl_examples": [
+    {
+      "name": "Basic Test",
+      "command": "curl -X POST https://your-n8n-instance.com/webhook/echo -H \"Content-Type: application/json\" -H \"x-webhook-secret: your-secret-here\" -d '{\"test\": \"basic\"}'"
+    },
+    {
+      "name": "Verbose Test",
+      "command": "curl -v -X POST https://your-n8n-instance.com/webhook/echo -H \"Content-Type: application/json\" -H \"x-webhook-secret: your-secret-here\" -d '{\"test\": \"verbose\", \"debug\": true}'"
+    },
+    {
+      "name": "File Input Test",
+      "command": "curl -X POST https://your-n8n-instance.com/webhook/echo -H \"Content-Type: application/json\" -H \"x-webhook-secret: your-secret-here\" -d @test-payload.json"
+    }
+  ],
+  "validation_points": [
+    "Response status should be 200",
+    "Response must include 'ok' field set to true",
+    "Response must include 'receivedAt' with valid ISO timestamp",
+    "Response must include 'payload' field containing exact input",
+    "Content-Type header should be application/json",
+    "Authentication header x-webhook-secret is required"
+  ]
+}

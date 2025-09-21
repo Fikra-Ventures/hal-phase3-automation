@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "n8n Workflow Template Schema",
+  "description": "Schema for validating n8n workflow templates",
+  "type": "object",
+  "required": ["name", "nodes", "connections", "createdAt", "updatedAt", "staticData"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the workflow",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Array of workflow nodes",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["parameters", "name", "type", "typeVersion", "position", "id"],
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "description": "Node-specific parameters"
+          },
+          "name": {
+            "type": "string",
+            "description": "Node name",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "description": "Node type (e.g., n8n-nodes-base.webhook)"
+          },
+          "typeVersion": {
+            "type": "number",
+            "description": "Node type version"
+          },
+          "position": {
+            "type": "array",
+            "description": "Node position [x, y]",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique node identifier"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional node notes",
+            "maxLength": 500
+          },
+          "webhookId": {
+            "type": "string",
+            "description": "Webhook identifier for webhook nodes"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "connections": {
+      "type": "object",
+      "description": "Node connections mapping",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["node", "type"],
+              "properties": {
+                "node": {
+                  "type": "string",
+                  "description": "Target node name"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Connection type"
+                },
+                "index": {
+                  "type": "number",
+                  "description": "Connection index"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$",
+      "description": "Workflow creation timestamp in ISO format"
+    },
+    "updatedAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$",
+      "description": "Last update timestamp in ISO format"
+    },
+    "staticData": {
+      "type": "object",
+      "description": "Static workflow data"
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether workflow is active"
+    },
+    "tags": {
+      "type": "array",
+      "description": "Workflow tags",
+      "items": {
+        "type": "string"
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "Workflow settings",
+      "properties": {
+        "saveDataErrorExecution": {
+          "type": "string",
+          "enum": ["all", "none"]
+        },
+        "saveDataSuccessExecution": {
+          "type": "string",
+          "enum": ["all", "none"]
+        },
+        "saveManualExecutions": {
+          "type": "boolean"
+        },
+        "callerPolicy": {
+          "type": "string",
+          "enum": ["workflowsFromSameOwner", "workflowsFromAList", "any"]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
