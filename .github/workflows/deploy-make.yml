@@ -4,8 +4,8 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'make/blueprints/**/*.json'
-  workflow_dispatch: {}  # allows manual run from Actions
+      - "make/blueprints/**/*.json"
+  workflow_dispatch: {}   # allow manual runs from Actions tab
 
 permissions:
   contents: read
@@ -21,59 +21,73 @@ jobs:
           fetch-depth: 0
 
       - name: Ensure jq is available
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-      # Decide which blueprint files to send
       - name: Collect blueprint files
         id: files
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            # Only files changed in this commit (under make/blueprints/*.json)
-            CHANGED=$(git diff --name-only ${{ github.sha }}^ ${{ github.sha }} \
-              | grep -E '^make/blueprints/.*\.json$' || true)
+
+          # Default to no files
+          CHANGED=""
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            # For pushes, diff against the previous commit if available
+            BASE="${GITHUB_EVENT_BEFORE:-}"
+            if [[ -z "${BASE}" || "${BASE}" == "0000000000000000000000000000000000000000" ]]; then
+              # First push on branch (no before SHA) – take all tracked blueprints
+              CHANGED=$(git ls-files 'make/blueprints/**/*.json' || true)
+            else
+              CHANGED=$(git diff --name-only "${BASE}" "${GITHUB_SHA}" \
+                | grep -E '^make/blueprints/.*\.json$' || true)
+            fi
           else
-            # Manual run: deploy everything we find
+            # For manual runs, deploy everything we find
             CHANGED=$(find make/blueprints -type f -name '*.json' 2>/dev/null || true)
           fi
 
           echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "${CHANGED}" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
           echo "Discovered files:"
-          echo "$CHANGED"
+          echo "${CHANGED}"
 
       - name: Import blueprints to Make
         if: steps.files.outputs.files != ''
         env:
           MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}
           MAKE_TEAM_ID:   ${{ secrets.MAKE_TEAM_ID }}
-          MAKE_API_BASE:  ${{ secrets.MAKE_API_BASE }}   # set this to https://eu2.make.com/api/v2 in repo secrets
+          MAKE_API_BASE:  ${{ secrets.MAKE_API_BASE }}   # optional; default used if unset
         shell: bash
         run: |
           set -euo pipefail
-          API="${MAKE_API_BASE:-https://eu2.make.com/api/v2}"   # default to EU2 since your workspace is eu2
-          echo "Using Make API: $API/blueprints/import"
+          # Default to EU2 tenant API. Change the default if your org is on a different region.
+          API="${MAKE_API_BASE:-https://eu2.make.com/api/v2}"
+          IMPORT_URL="${API}/blueprints/import"
+          echo "Using Make API: ${IMPORT_URL}"
 
           echo "${{ steps.files.outputs.files }}" | while read -r f; do
             [[ -z "$f" ]] && continue
             echo "➡️  Importing $f"
-            curl -sS --retry 3 --retry-delay 2 \
-              -X POST "$API/blueprints/import" \
+
+            # Call Make Import API and capture HTTP code cleanly
+            code=$(curl -sS --retry 3 --retry-delay 2 \
+              -X POST "${IMPORT_URL}" \
               -H "Authorization: Token ${MAKE_API_TOKEN}" \
               -H "X-Team-Id: ${MAKE_TEAM_ID}" \
               -H "Content-Type: application/json" \
-              --data-binary "@$f" \
-              -o resp.json -w "\nHTTP:%{http_code}\n"
+              --data-binary "@${f}" \
+              -o resp.json -w "%{http_code}")
 
-            code=$(tail -n1 resp.json | sed 's/HTTP://')
-            if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
-              echo "✅ Imported $f (HTTP $code)"
+            if [[ "${code}" -ge 200 && "${code}" -lt 300 ]]; then
+              echo "✅ Imported ${f} (HTTP ${code})"
               echo "IDs:"; jq -r '.items[]?.id // .id // empty' resp.json || true
             else
-              echo "❌ Import failed for $f (HTTP $code) — response body (truncated):"
+              echo "❌ Import failed for ${f} (HTTP ${code}) — response body (truncated):"
               head -c 2000 resp.json || true
               exit 1
             fi
