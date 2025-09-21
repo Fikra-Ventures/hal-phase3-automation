@@ -48,7 +48,7 @@ jobs:
           
           # Validate schema itself
           echo "📋 Validating schema file..."
-          ajv validate -s http://json-schema.org/draft-07/schema# -d templates/schema.json
+          node scripts/validate.js schema
           
           # Find and validate all template JSON files (excluding schema and examples)
           TEMPLATE_FILES=$(find templates -name "*.json" -not -path "*/examples/*" -not -name "schema.json")
@@ -90,47 +90,8 @@ jobs:
           # Check for required fields and n8n-specific validations
           for template in $(find templates -name "*.json" -not -path "*/examples/*" -not -name "schema.json"); do
             echo "📋 Checking $template structure..."
-            
-            # Validate nodes have required webhook properties
-            if ! node -e "
-              const fs = require('fs');
-              const template = JSON.parse(fs.readFileSync('$template', 'utf8'));
-              
-              // Check for webhook nodes
-              const webhookNodes = template.nodes.filter(node => node.type.includes('webhook'));
-              if (webhookNodes.length === 0) {
-                console.log('⚠️ No webhook nodes found');
-                process.exit(0);
-              }
-              
-              // Validate webhook nodes
-              for (const node of webhookNodes) {
-                if (!node.parameters) {
-                  console.log('❌ Webhook node missing parameters');
-                  process.exit(1);
-                }
-                
-                // Check for environment variable usage (no inline secrets)
-                const paramsStr = JSON.stringify(node.parameters);
-                if (paramsStr.includes('secret') && !paramsStr.includes('{{') && !paramsStr.includes('ENV')) {
-                  console.log('❌ Webhook node contains inline secrets');
-                  process.exit(1);
-                }
-                
-                // Check for concise notes
-                if (node.notes && node.notes.length > 200) {
-                  console.log('❌ Node notes too long (max 200 characters)');
-                  process.exit(1);
-                }
-              }
-              
-              console.log('✅ Webhook validation passed');
-            "; then
-              echo "✅ $template structure validation passed"
-            else
-              echo "❌ $template structure validation failed"
-              exit 1
-            fi
+            node scripts/validate.js template "$template"
+            echo "✅ $template structure validation passed"
           done
           
       - name: Validate Examples
