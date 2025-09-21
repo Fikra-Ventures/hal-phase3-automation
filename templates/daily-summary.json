@@ -1,0 +1,164 @@
+{
+  "name": "Daily Slack Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily 09:00 UTC Trigger",
+      "type": "n8n-nodes-base.Cron",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Triggers daily at 09:00 UTC to generate summary of yesterday's tickets"
+    },
+    {
+      "parameters": {
+        "authentication": "apiKey",
+        "operation": "list",
+        "application": "={{$env.AIRTABLE_BASE_ID}}",
+        "table": "Tasks",
+        "options": {
+          "filterByFormula": "AND(IS_AFTER(CREATED_TIME(), DATEADD(TODAY(), -1, 'day')), IS_BEFORE(CREATED_TIME(), TODAY()))",
+          "sort": [
+            {
+              "field": "Priority",
+              "direction": "desc"
+            }
+          ]
+        },
+        "additionalFields": {
+          "fields": ["Task", "Priority", "Product", "Status", "Owner", "Created Time"]
+        }
+      },
+      "id": "airtable-fetch",
+      "name": "Fetch Yesterday's Tickets",
+      "type": "n8n-nodes-base.Airtable",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "notes": "Retrieves all tickets created yesterday from Airtable, filtered by date and sorted by priority",
+      "credentials": {
+        "airtableApi": {
+          "id": "{{$env.AIRTABLE_API_KEY}}",
+          "name": "Airtable API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const tickets = $input.all();\n\n// Group tickets by product and priority\nconst summary = {\n  totalTickets: tickets.length,\n  byProduct: {},\n  byPriority: {\n    critical: 0,\n    high: 0,\n    medium: 0,\n    low: 0\n  },\n  ticketDetails: []\n};\n\n// Process each ticket\ntickets.forEach(item => {\n  const ticket = item.json.fields;\n  const product = ticket.Product || 'Unknown';\n  const priority = (ticket.Priority || 'medium').toLowerCase();\n  \n  // Count by product\n  if (!summary.byProduct[product]) {\n    summary.byProduct[product] = {\n      total: 0,\n      critical: 0,\n      high: 0,\n      medium: 0,\n      low: 0\n    };\n  }\n  summary.byProduct[product].total++;\n  summary.byProduct[product][priority]++;\n  \n  // Count by priority\n  if (summary.byPriority[priority] !== undefined) {\n    summary.byPriority[priority]++;\n  }\n  \n  // Store ticket details\n  summary.ticketDetails.push({\n    id: ticket.Task,\n    product: product,\n    priority: priority,\n    status: ticket.Status || 'open',\n    owner: ticket.Owner || 'unassigned',\n    createdTime: ticket['Created Time']\n  });\n});\n\n// Get yesterday's date for the summary\nconst yesterday = new Date();\nyesterday.setDate(yesterday.getDate() - 1);\nsummary.reportDate = yesterday.toISOString().split('T')[0];\n\nreturn [{ json: summary }];"
+      },
+      "id": "data-aggregator",
+      "name": "Aggregate by Product & Priority",
+      "type": "n8n-nodes-base.Code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "notes": "Groups tickets by product and priority, calculates counts and prepares summary data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Helper function to get priority emoji\nfunction getPriorityEmoji(priority) {\n  const emojis = {\n    critical: '🔴',\n    high: '🟠', \n    medium: '🟡',\n    low: '🟢'\n  };\n  return emojis[priority] || '⚪';\n}\n\n// Build product sections\nconst productSections = [];\nconst productNames = Object.keys(data.byProduct).sort();\n\nproductNames.forEach(product => {\n  const productData = data.byProduct[product];\n  const priorityText = Object.entries(productData)\n    .filter(([key, value]) => key !== 'total' && value > 0)\n    .map(([priority, count]) => `${getPriorityEmoji(priority)} ${priority}: ${count}`)\n    .join(' • ');\n  \n  productSections.push({\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: `*${product}*\\n${productData.total} tickets${priorityText ? ` (${priorityText})` : ''}`\n    }\n  });\n});\n\n// Build priority summary\nconst prioritySummary = Object.entries(data.byPriority)\n  .filter(([_, count]) => count > 0)\n  .map(([priority, count]) => `${getPriorityEmoji(priority)} ${priority}: ${count}`)\n  .join(' • ');\n\n// Build Slack Block Kit payload\nconst blocks = [\n  {\n    type: 'header',\n    text: {\n      type: 'plain_text',\n      text: `📊 Daily Ticket Summary - ${data.reportDate}`\n    }\n  },\n  {\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: `*Yesterday's Activity:* ${data.totalTickets} tickets created`\n    }\n  }\n];\n\n// Add priority summary if there are tickets\nif (data.totalTickets > 0) {\n  blocks.push({\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: `*By Priority:* ${prioritySummary}`\n    }\n  });\n  \n  blocks.push({\n    type: 'divider'\n  });\n  \n  // Add product sections\n  if (productSections.length > 0) {\n    blocks.push({\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: '*By Product:*'\n      }\n    });\n    blocks.push(...productSections);\n  }\n} else {\n  blocks.push({\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: '✅ No tickets created yesterday - great job team!'\n    }\n  });\n}\n\n// Add footer\nblocks.push(\n  {\n    type: 'divider'\n  },\n  {\n    type: 'context',\n    elements: [\n      {\n        type: 'mrkdwn',\n        text: 'Generated by HAL Phase 3 Automation System'\n      }\n    ]\n  }\n);\n\nreturn [{ json: { blocks, text: `Daily Ticket Summary - ${data.reportDate}` } }];"
+      },
+      "id": "block-kit-formatter",
+      "name": "Format as Slack Block Kit",
+      "type": "n8n-nodes-base.Code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "notes": "Transforms aggregated data into Slack Block Kit format with emojis, sections, and proper formatting"
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "select": "channel",
+        "channelId": "={{$env.SLACK_CHANNEL_ID_SUPPORT}}",
+        "text": "={{$json.text}}",
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "blocksBuilder",
+              "blocks": "={{JSON.stringify($json.blocks)}}"
+            }
+          ]
+        },
+        "otherOptions": {
+          "username": "HAL Bot",
+          "icon_emoji": ":robot_face:"
+        }
+      },
+      "id": "slack-post",
+      "name": "Post to Slack Channel",
+      "type": "n8n-nodes-base.Slack",
+      "typeVersion": 2.1,
+      "position": [1120, 300],
+      "notes": "Posts formatted summary to specified Slack channel using Block Kit for rich formatting",
+      "credentials": {
+        "slackApi": {
+          "id": "{{$env.SLACK_BOT_TOKEN}}",
+          "name": "Slack Bot Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 09:00 UTC Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Yesterday's Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Yesterday's Tickets": {
+      "main": [
+        [
+          {
+            "node": "Aggregate by Product & Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate by Product & Priority": {
+      "main": [
+        [
+          {
+            "node": "Format as Slack Block Kit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format as Slack Block Kit": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["automation", "daily-summary", "slack", "reporting"],
+  "triggerCount": 1,
+  "updatedAt": "2024-09-21T18:30:00.000Z",
+  "versionId": "daily-summary-v1.0"
+}
