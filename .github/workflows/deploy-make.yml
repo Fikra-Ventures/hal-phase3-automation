@@ -28,37 +28,19 @@ jobs:
 
       - name: Import blueprints to Make
         env:
-          MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}  # required
-          MAKE_ORG_ID: ${{ secrets.MAKE_ORG_ID }}        # optional; will auto-discover if empty
-          MAKE_BASE: https://eu2.make.com                # change to your shard if needed (eu1/us1)
+          MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}   # required
+          MAKE_ORG_ID: ${{ secrets.MAKE_ORG_ID }}         # required (you added this)
+          MAKE_BASE: https://eu2.make.com                 # change to eu1/us1 if needed
         shell: bash
         run: |
           set -euo pipefail
 
-          # ---- sanity checks ----
+          # ---- required env checks ----
           if [ -z "${MAKE_API_TOKEN:-}" ]; then
             echo "❌ Missing secrets.MAKE_API_TOKEN"; exit 1
           fi
-
-          # Auto-discover ORG_ID if not provided
           if [ -z "${MAKE_ORG_ID:-}" ]; then
-            echo "ℹ️ MAKE_ORG_ID not set. Auto-discovering…"
-            DISCOVER_URL="${MAKE_BASE}/api/v2/orgs"
-            http_code=$(curl -sS -o /tmp/make_orgs.json -w "%{http_code}" \
-              -H "Authorization: Token ${MAKE_API_TOKEN}" "${DISCOVER_URL}")
-            if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
-              MAKE_ORG_ID=$(jq -r '.data[0].id // empty' /tmp/make_orgs.json)
-              if [ -z "${MAKE_ORG_ID}" ] || [ "${MAKE_ORG_ID}" = "null" ]; then
-                echo "❌ Could not auto-discover org id from ${DISCOVER_URL}"
-                cat /tmp/make_orgs.json || true
-                exit 1
-              fi
-              echo "✅ Discovered MAKE_ORG_ID=${MAKE_ORG_ID}"
-            else
-              echo "❌ Failed to list orgs (HTTP ${http_code})"
-              cat /tmp/make_orgs.json || true
-              exit 1
-            fi
+            echo "❌ Missing secrets.MAKE_ORG_ID"; exit 1
           fi
 
           API_URL="${MAKE_BASE}/api/v2/orgs/${MAKE_ORG_ID}/blueprints/import"
@@ -74,6 +56,7 @@ jobs:
           echo "Using Make API: ${API_URL}"
           for f in "${files[@]}"; do
             echo "📦 Importing ${f}"
+            # Validate JSON
             jq -e . < "${f}" >/dev/null
 
             # Wrap as expected payload: { "blueprint": <json> }
