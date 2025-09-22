@@ -1,1 +1,96 @@
-{"version": "1.0","jobs": {"build": {"runs-on": "ubuntu-latest","steps": [{"name": "Checkout code","uses": "actions/checkout@v2"},{"name": "Run Makefile","run": "make"}]}}}
+name: Deploy Make blueprints
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "make/blueprints/*.json"
+      - ".github/workflows/deploy-make.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  import_blueprints:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure jq is available
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Import blueprints to Make
+        env:
+          MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}  # required
+          MAKE_ORG_ID: ${{ secrets.MAKE_ORG_ID }}        # optional; will auto-discover if empty
+          MAKE_BASE: https://eu2.make.com                # change to your shard if needed (eu1/us1)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # ---- sanity checks ----
+          if [ -z "${MAKE_API_TOKEN:-}" ]; then
+            echo "❌ Missing secrets.MAKE_API_TOKEN"; exit 1
+          fi
+
+          # Auto-discover ORG_ID if not provided
+          if [ -z "${MAKE_ORG_ID:-}" ]; then
+            echo "ℹ️ MAKE_ORG_ID not set. Auto-discovering…"
+            DISCOVER_URL="${MAKE_BASE}/api/v2/orgs"
+            http_code=$(curl -sS -o /tmp/make_orgs.json -w "%{http_code}" \
+              -H "Authorization: Token ${MAKE_API_TOKEN}" "${DISCOVER_URL}")
+            if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
+              MAKE_ORG_ID=$(jq -r '.data[0].id // empty' /tmp/make_orgs.json)
+              if [ -z "${MAKE_ORG_ID}" ] || [ "${MAKE_ORG_ID}" = "null" ]; then
+                echo "❌ Could not auto-discover org id from ${DISCOVER_URL}"
+                cat /tmp/make_orgs.json || true
+                exit 1
+              fi
+              echo "✅ Discovered MAKE_ORG_ID=${MAKE_ORG_ID}"
+            else
+              echo "❌ Failed to list orgs (HTTP ${http_code})"
+              cat /tmp/make_orgs.json || true
+              exit 1
+            fi
+          fi
+
+          API_URL="${MAKE_BASE}/api/v2/orgs/${MAKE_ORG_ID}/blueprints/import"
+
+          # ---- collect blueprint files ----
+          shopt -s nullglob
+          files=(make/blueprints/*.json)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "ℹ️ No blueprint files under make/blueprints/*.json — nothing to import."
+            exit 0
+          fi
+
+          echo "Using Make API: ${API_URL}"
+          for f in "${files[@]}"; do
+            echo "📦 Importing ${f}"
+            jq -e . < "${f}" >/dev/null
+
+            # Wrap as expected payload: { "blueprint": <json> }
+            payload=$(jq -c '{blueprint: .}' < "${f}")
+
+            http_code=$(curl -sS -o /tmp/make_import_resp.json -w "%{http_code}" \
+              -X POST "${API_URL}" \
+              -H "Authorization: Token ${MAKE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "${payload}")
+
+            if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
+              echo "✅ Imported ${f}"
+            else
+              echo "❌ Import failed for ${f} (HTTP ${http_code})"
+              echo "Response:"
+              cat /tmp/make_import_resp.json || true
+              exit 1
+            fi
+          done
