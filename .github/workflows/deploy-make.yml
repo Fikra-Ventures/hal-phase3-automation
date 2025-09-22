@@ -29,21 +29,45 @@ jobs:
       - name: Import blueprints to Make
         env:
           MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}   # required
-          MAKE_ORG_ID: ${{ secrets.MAKE_ORG_ID }}         # required (you added this)
-          MAKE_BASE: https://eu2.make.com                 # change to eu1/us1 if needed
+          MAKE_ORG_ID: ${{ secrets.MAKE_ORG_ID }}         # recommended (e.g., 5050298)
+          MAKE_BASE: ${{ secrets.MAKE_BASE }}             # optional; defaults to https://eu2.make.com
         shell: bash
         run: |
           set -euo pipefail
+
+          # ---- base URL (default to eu2 if not provided) ----
+          if [ -z "${MAKE_BASE:-}" ]; then
+            MAKE_BASE="https://eu2.make.com"
+          fi
 
           # ---- required env checks ----
           if [ -z "${MAKE_API_TOKEN:-}" ]; then
             echo "❌ Missing secrets.MAKE_API_TOKEN"; exit 1
           fi
-          if [ -z "${MAKE_ORG_ID:-}" ]; then
-            echo "❌ Missing secrets.MAKE_ORG_ID"; exit 1
+
+          # ---- decide endpoint: orgs/{id} vs organizations/{id} vs global ----
+          API_PREFIX=""
+          if [ -n "${MAKE_ORG_ID:-}" ]; then
+            for seg in "orgs" "organizations"; do
+              probe="${MAKE_BASE}/api/v2/${seg}/${MAKE_ORG_ID}"
+              code=$(curl -sS -o /tmp/make_org_probe.json -w "%{http_code}" \
+                -H "Authorization: Token ${MAKE_API_TOKEN}" "$probe" || echo "000")
+              echo "Probe ${probe} -> HTTP ${code}"
+              if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ]; then
+                API_PREFIX="${seg}/${MAKE_ORG_ID}"
+                break
+              fi
+            done
           fi
 
-          API_URL="${MAKE_BASE}/api/v2/orgs/${MAKE_ORG_ID}/blueprints/import"
+          if [ -n "${API_PREFIX}" ]; then
+            API_URL="${MAKE_BASE}/api/v2/${API_PREFIX}/blueprints/import"
+          else
+            echo "⚠️  No accessible org endpoint; using global import."
+            API_URL="${MAKE_BASE}/api/v2/blueprints/import"
+          fi
+
+          echo "Using Make API: ${API_URL}"
 
           # ---- collect blueprint files ----
           shopt -s nullglob
@@ -53,29 +77,56 @@ jobs:
             exit 0
           fi
 
-          echo "Using Make API: ${API_URL}"
+          imported=0
+          failed=0
+
+          # ---- import each blueprint ----
           for f in "${files[@]}"; do
             echo "📦 Importing ${f}"
             # Validate JSON
             jq -e . < "${f}" >/dev/null
 
-            # Wrap as expected payload: { "blueprint": <json> }
+            # Payload Make expects: { "blueprint": <json> }
             payload=$(jq -c '{blueprint: .}' < "${f}")
 
             http_code=$(curl -sS -o /tmp/make_import_resp.json -w "%{http_code}" \
               -X POST "${API_URL}" \
               -H "Authorization: Token ${MAKE_API_TOKEN}" \
               -H "Content-Type: application/json" \
-              --data "${payload}")
+              --data "${payload}" || echo "000")
 
             if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
               echo "✅ Imported ${f}"
-            else
-              echo "❌ Import failed for ${f} (HTTP ${http_code})"
-              echo "Response:"
-              cat /tmp/make_import_resp.json || true
-              exit 1
+              imported=$((imported+1))
+              continue
             fi
+
+            echo "❌ Import failed for ${f} (HTTP ${http_code})"
+            echo "Response:"; cat /tmp/make_import_resp.json || true
+
+            # If org endpoint 404s, retry once with global
+            if [[ "${API_URL}" != *"/blueprints/import" ]] && [ "${http_code}" -eq 404 ]; then
+              fallback_url="${MAKE_BASE}/api/v2/blueprints/import"
+              echo "🔁 Retrying via global import: ${fallback_url}"
+              http_code=$(curl -sS -o /tmp/make_import_resp.json -w "%{http_code}" \
+                -X POST "${fallback_url}" \
+                -H "Authorization: Token ${MAKE_API_TOKEN}" \
+                -H "Content-Type: application/json" \
+                --data "${payload}" || echo "000")
+              if [ "${http_code}" -ge 200 ] && [ "${http_code}" -lt 300 ]; then
+                echo "✅ Imported ${f} via global endpoint"
+                imported=$((imported+1))
+                continue
+              else
+                echo "❌ Fallback import also failed for ${f} (HTTP ${http_code})"
+                echo "Response:"; cat /tmp/make_import_resp.json || true
+              fi
+            fi
+
+            failed=$((failed+1))
           done
-          # trigger: noop change to run Deploy Make blueprints
-          
+
+          echo "Summary: imported=${imported}, failed=${failed}"
+          if [ "${failed}" -gt 0 ]; then
+            exit 1
+          fi
