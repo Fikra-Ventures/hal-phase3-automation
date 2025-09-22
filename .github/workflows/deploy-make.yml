@@ -29,41 +29,38 @@ jobs:
       - name: Import blueprints to Make
         env:
           MAKE_API_TOKEN: ${{ secrets.MAKE_API_TOKEN }}   # required
-          MAKE_ORG_ID: ${{ secrets.MAKE_ORG_ID }}         # recommended (e.g., 5050298)
-          MAKE_BASE: ${{ secrets.MAKE_BASE }}             # optional; defaults to https://eu2.make.com
+          MAKE_ORG_ID: ${{ secrets.MAKE_ORG_ID }}         # required: set to 5050298
+          # Hard-set to your tenant:
+          MAKE_BASE: https://eu2.make.com
         shell: bash
         run: |
           set -euo pipefail
-
-          # ---- base URL (default to eu2 if not provided) ----
-          if [ -z "${MAKE_BASE:-}" ]; then
-            MAKE_BASE="https://eu2.make.com"
-          fi
 
           # ---- required env checks ----
           if [ -z "${MAKE_API_TOKEN:-}" ]; then
             echo "❌ Missing secrets.MAKE_API_TOKEN"; exit 1
           fi
-
-          # ---- decide endpoint: orgs/{id} vs organizations/{id} vs global ----
-          API_PREFIX=""
-          if [ -n "${MAKE_ORG_ID:-}" ]; then
-            for seg in "orgs" "organizations"; do
-              probe="${MAKE_BASE}/api/v2/${seg}/${MAKE_ORG_ID}"
-              code=$(curl -sS -o /tmp/make_org_probe.json -w "%{http_code}" \
-                -H "Authorization: Token ${MAKE_API_TOKEN}" "$probe" || echo "000")
-              echo "Probe ${probe} -> HTTP ${code}"
-              if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ]; then
-                API_PREFIX="${seg}/${MAKE_ORG_ID}"
-                break
-              fi
-            done
+          if [ -z "${MAKE_ORG_ID:-}" ]; then
+            echo "❌ Missing secrets.MAKE_ORG_ID (expected 5050298)"; exit 1
           fi
+
+          # ---- probe org endpoint: organizations/{id} then orgs/{id}; else global ----
+          API_PREFIX=""
+          for seg in "organizations" "orgs"; do
+            probe="${MAKE_BASE}/api/v2/${seg}/${MAKE_ORG_ID}"
+            code=$(curl -sS -o /tmp/make_org_probe.json -w "%{http_code}" \
+              -H "Authorization: Token ${MAKE_API_TOKEN}" "$probe" || echo "000")
+            echo "Probe ${probe} -> HTTP ${code}"
+            if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ]; then
+              API_PREFIX="${seg}/${MAKE_ORG_ID}"
+              break
+            fi
+          done
 
           if [ -n "${API_PREFIX}" ]; then
             API_URL="${MAKE_BASE}/api/v2/${API_PREFIX}/blueprints/import"
           else
-            echo "⚠️  No accessible org endpoint; using global import."
+            echo "⚠️  No accessible org endpoint on EU2; using global import."
             API_URL="${MAKE_BASE}/api/v2/blueprints/import"
           fi
 
@@ -83,10 +80,9 @@ jobs:
           # ---- import each blueprint ----
           for f in "${files[@]}"; do
             echo "📦 Importing ${f}"
-            # Validate JSON
             jq -e . < "${f}" >/dev/null
 
-            # Payload Make expects: { "blueprint": <json> }
+            # Expected payload: { "blueprint": <json> }
             payload=$(jq -c '{blueprint: .}' < "${f}")
 
             http_code=$(curl -sS -o /tmp/make_import_resp.json -w "%{http_code}" \
