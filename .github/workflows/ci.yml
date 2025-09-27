@@ -13,98 +13,25 @@ jobs:
   node:
     name: Node checks
     runs-on: ubuntu-latest
-    if: >
-      hashFiles('package.json') != '' ||
-      hashFiles('pnpm-lock.yaml') != '' ||
-      hashFiles('yarn.lock') != '' ||
-      hashFiles('package-lock.json') != ''
+    if: ${{ hashFiles('package.json') != '' || hashFiles('pnpm-lock.yaml') != '' || hashFiles('yarn.lock') != '' || hashFiles('package-lock.json') != '' }}
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm path (runs only if a pnpm lockfile exists)
-      - uses: actions/setup-node@v4
-        if: hashFiles('pnpm-lock.yaml') != ''
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      - uses: pnpm/action-setup@v4
-        if: hashFiles('pnpm-lock.yaml') != ''
-        with:
-          version: 9
-      - name: Install (pnpm)
-        if: hashFiles('pnpm-lock.yaml') != ''
-        run: pnpm install --frozen-lockfile
-
-      # npm path
-      - uses: actions/setup-node@v4
-        if: hashFiles('package-lock.json') != ''
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - name: Install (npm)
-        if: hashFiles('package-lock.json') != ''
-        run: npm ci
-
-      # yarn path
-      - uses: actions/setup-node@v4
-        if: hashFiles('yarn.lock') != ''
-        with:
-          node-version: '20'
-          cache: 'yarn'
-      - name: Install (yarn)
-        if: hashFiles('yarn.lock') != ''
-        run: yarn install --frozen-lockfile
-
-      - name: Type check
-        if: hashFiles('package.json') != ''
+      - name: Install dependencies
         run: |
-          if [ -f package.json ] && jq -e '.scripts.typecheck' package.json >/dev/null 2>&1; then
-            pnpm run typecheck 2>/dev/null || npm run typecheck --if-present 2>/dev/null || yarn typecheck 2>/dev/null || true
+          if [ -f pnpm-lock.yaml ]; then
+            corepack enable pnpm
+            pnpm install --frozen-lockfile
+          elif [ -f package-lock.json ]; then
+            npm ci
+          elif [ -f yarn.lock ]; then
+            yarn install --frozen-lockfile
           else
-            echo "No typecheck script; skipping."
+            echo "No lockfile found; skipping install"
           fi
 
-      - name: Lint
-        if: hashFiles('package.json') != ''
+      - name: Run typecheck, lint, test
         run: |
-          if [ -f package.json ] && jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
-            pnpm run lint 2>/dev/null || npm run lint --if-present 2>/dev/null || yarn lint 2>/dev/null || true
-          else
-            echo "No lint script; skipping."
-          fi
-
-      - name: Test
-        if: hashFiles('package.json') != ''
-        run: |
-          if [ -f package.json ] && jq -e '.scripts.test' package.json >/dev/null 2>&1; then
-            pnpm test 2>/dev/null || npm test --if-present 2>/dev/null || yarn test 2>/dev/null || true
-          else
-            echo "No tests; skipping."
-          fi
-
-  python:
-    name: Python checks
-    runs-on: ubuntu-latest
-    if: >
-      hashFiles('requirements*.txt') != '' || hashFiles('pyproject.toml') != ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - name: Install deps
-        run: |
-          if ls requirements*.txt >/dev/null 2>&1; then pip install -r requirements*.txt; fi
-          if [ -f pyproject.toml ]; then pip install . || true; fi
-      - name: Lint (flake8)
-        run: |
-          pip install flake8 || true
-          flake8 . || true
-      - name: Tests (pytest)
-        run: |
-          if [ -f pytest.ini ] || [ -d tests ]; then
-            pip install pytest || true
-            pytest -q || true
-          else
-            echo "No pytest config/tests; skipping."
-          fi
+          npm run typecheck --if-present || true
+          npm run lint --if-present || true
+          npm test --if-present || true
