@@ -1,0 +1,85 @@
+name: 🔒 Branch Protection
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run mode (show what would be done without making changes)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  protect-main:
+    runs-on: ubuntu-latest
+    name: Apply Branch Protection Rules
+    
+    steps:
+      - name: 🔒 Apply Branch Protection to main
+        shell: bash
+        run: |
+          # Configuration
+          REPO="Fikra-Ventures/hal-phase3-automation"
+          BRANCH="main"
+          DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+          
+          # Branch protection payload
+          PROTECTION_PAYLOAD='{
+            "required_status_checks": {
+              "strict": true,
+              "contexts": []
+            },
+            "enforce_admins": true,
+            "required_pull_request_reviews": {
+              "dismiss_stale_reviews": true,
+              "require_code_owner_reviews": false,
+              "required_approving_review_count": 1
+            },
+            "restrictions": null,
+            "allow_force_pushes": false,
+            "allow_deletions": false
+          }'
+          
+          echo "🔒 Branch Protection Configuration for ${REPO}:${BRANCH}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "$PROTECTION_PAYLOAD" | jq '.'
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "🧪 DRY RUN MODE: Would apply the above protection rules to ${BRANCH} branch"
+            echo "   → Required status checks: strict=true, contexts=[]"
+            echo "   → Enforce admins: true"
+            echo "   → Required PR reviews: 1 approving review, dismiss stale reviews"
+            echo "   → No restrictions on users/teams"
+            echo "   → Force pushes: disabled"
+            echo "   → Branch deletions: disabled"
+            echo ""
+            echo "To apply these rules, run this workflow with dry_run=false"
+          else
+            echo "🚀 Applying branch protection rules to ${BRANCH}..."
+            
+            RESPONSE=$(curl -s -w "HTTP_STATUS:%{http_code}" \
+              -X PUT \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.BRANCH_PROTECT_TOKEN }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -d "$PROTECTION_PAYLOAD" \
+              "https://api.github.com/repos/${REPO}/branches/${BRANCH}/protection")
+            
+            HTTP_STATUS=$(echo "$RESPONSE" | grep -o "HTTP_STATUS:[0-9]*" | cut -d: -f2)
+            BODY=$(echo "$RESPONSE" | sed -E 's/HTTP_STATUS:[0-9]*$//')
+            
+            if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 300 ]]; then
+              echo "✅ Successfully applied branch protection rules to ${BRANCH}"
+              echo "📋 Response details:"
+              echo "$BODY" | jq '.'
+            else
+              echo "❌ Failed to apply branch protection rules"
+              echo "HTTP Status: $HTTP_STATUS"
+              echo "Response: $BODY"
+              exit 1
+            fi
+          fi
