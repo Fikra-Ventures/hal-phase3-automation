@@ -1,0 +1,40 @@
+name: validate-json
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Validate JSON under templates/**
+        run: |
+          set -e
+          if compgen -G "templates/**/*.json" > /dev/null; then
+            echo "Validating templates/**/*.json"
+            find templates -type f -name "*.json" -print0 | \
+              xargs -0 -I{} bash -c 'jq -e . "{}" >/dev/null || (echo "Invalid JSON: {}" >&2; exit 1)'
+          else
+            echo "No JSON in templates/** — skipping"
+          fi
+
+      - name: Validate JSON under docs/runbooks/**
+        run: |
+          set -e
+          if compgen -G "docs/runbooks/**/*.json" > /dev/null; then
+            echo "Validating docs/runbooks/**/*.json"
+            find docs/runbooks -type f -name "*.json" -print0 | \
+              xargs -0 -I{} bash -c 'jq -e . "{}" >/dev/null || (echo "Invalid JSON: {}" >&2; exit 1)'
+          else
+            echo "No JSON in docs/runbooks/** — skipping"
+          fi
