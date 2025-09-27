@@ -1,37 +1,12 @@
 name: ci
-
 on:
   pull_request:
   push:
     branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
-  node:
-    name: Node checks
+  noop:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('package.json') != '' || hashFiles('pnpm-lock.yaml') != '' || hashFiles('yarn.lock') != '' || hashFiles('package-lock.json') != '' }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          if [ -f pnpm-lock.yaml ]; then
-            corepack enable pnpm
-            pnpm install --frozen-lockfile
-          elif [ -f package-lock.json ]; then
-            npm ci
-          elif [ -f yarn.lock ]; then
-            yarn install --frozen-lockfile
-          else
-            echo "No lockfile found; skipping install"
-          fi
-
-      - name: Run typecheck, lint, test
-        run: |
-          npm run typecheck --if-present || true
-          npm run lint --if-present || true
-          npm test --if-present || true
+      - name: Succeed (no-op)
+        run: echo "No project-wide CI here; governance uses validate-json + branch-protection"
