@@ -1,10 +1,27 @@
-name: Validate n8n Templates
+name: Validate Templates
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "templates/**/*.json"
+      - ".github/workflows/validate-templates.yml"
+      - ".github/schemas/**"
   workflow_dispatch:
+    inputs:
+      schema_mode:
+        description: "Schema enforcement mode: off | warn | strict"
+        required: false
+        default: "warn"
 
-permissions: read-all
+permissions:
+  contents: write         # allow auto-format commits to PR branch
+  pull-requests: write
+
+env:
+  # Default schema mode (can be overridden by repo variable or workflow input)
+  SCHEMA_MODE_DEFAULT: warn
+  SCHEMA_PATH: .github/schemas/template.schema.json
 
 jobs:
   validate:
@@ -14,42 +31,121 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # Detect whether this PR actually touches template/runbook files
-      - name: Detect changes
-        id: changes
-        uses: dorny/paths-filter@v3
         with:
-          filters: |
-            templates:
-              - 'templates/**'
-              - 'docs/runbooks/**'
-              - '.github/workflows/validate-templates.yml'  # always allow self-update
+          persist-credentials: true
 
-      # If no template files changed, succeed fast
-      - name: No template changes — skipping validation
-        if: steps.changes.outputs.templates != 'true'
+      - name: Determine schema mode
+        id: mode
         run: |
-          echo "No template/runbook files changed in this PR; skipping validation."
-          exit 0
+          # Priority: manual input > repo variable > default
+          MODE="${{ github.event.inputs.schema_mode }}"
+          if [ -z "$MODE" ]; then
+            MODE="${{ vars.SCHEMA_MODE }}"
+          fi
+          if [ -z "$MODE" ]; then
+            MODE="${SCHEMA_MODE_DEFAULT}"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
-      # --- real validation only runs when templates == true ---
-      - name: Setup Node
-        if: steps.changes.outputs.templates == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Print effective mode
+        run: echo "Schema mode is: ${{ steps.mode.outputs.mode }}"
 
-      - name: Install jq
-        if: steps.changes.outputs.templates == 'true'
+      - name: Ensure there are templates
+        id: has_templates
         run: |
-          sudo apt-get update
+          if compgen -G "templates/**/*.json" > /dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No JSON templates found; exiting cleanly."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup tools
+        if: steps.has_templates.outputs.found == 'true'
+        run: |
+          sudo apt-get update -y
           sudo apt-get install -y jq
+          npm -g i ajv-cli@5
 
-      - name: Validate JSON schema
-        if: steps.changes.outputs.templates == 'true'
+      - name: Auto-format JSON (jq -S .) and commit if changed
+        if: steps.has_templates.outputs.found == 'true'
         run: |
-          echo "🔎 Validating template JSON schemas..."
-          # Example: fail on first bad JSON file
-          find templates docs/runbooks -type f -name '*.json' -print0 | \
-            xargs -0 -I{} bash -c 'jq -e . "{}" >/dev/null || (echo "Invalid JSON: {}" && exit 1)'
+          set -e
+          CHANGED=0
+          while IFS= read -r -d '' f; do
+            jq -S . "$f" > "$f.formatted" || { echo "Invalid JSON: $f"; exit 1; }
+            if ! diff -q "$f" "$f.formatted" >/dev/null; then
+              mv "$f.formatted" "$f"
+              git add "$f"
+              CHANGED=1
+            else
+              rm "$f.formatted"
+            fi
+          done < <(find templates -type f -name '*.json' -print0)
+
+          if [ "$CHANGED" = "1" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(templates): auto-format JSON"
+            git push
+          fi
+
+      - name: Decide whether to run schema validation
+        id: schema_gate
+        if: steps.has_templates.outputs.found == 'true'
+        run: |
+          if [ -f "${SCHEMA_PATH}" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Schema file found at ${SCHEMA_PATH}"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No schema file at ${SCHEMA_PATH}; skipping schema validation."
+          fi
+
+      - name: Validate JSON schema (AJV)
+        if: steps.schema_gate.outputs.run == 'true'
+        id: ajv
+        continue-on-error: ${{ steps.mode.outputs.mode != 'strict' }}
+        run: |
+          set +e
+          ERR=0
+          # Validate each template against the schema
+          while IFS= read -r -d '' f; do
+            echo "Validating $f"
+            ajv validate -s "${SCHEMA_PATH}" -d "$f" --errors=text
+            RC=$?
+            if [ $RC -ne 0 ]; then
+              echo "::error file=$f,title=Schema validation failed::$f does not match schema"
+              ERR=1
+            fi
+          done < <(find templates -type f -name '*.json' -print0)
+
+          # Write a job summary with pass/fail
+          {
+            echo "### Template Schema Validation"
+            echo ""
+            echo "- **Mode:** \`${{ steps.mode.outputs.mode }}\`"
+            if [ $ERR -eq 0 ]; then
+              echo "- ✅ All templates passed schema validation."
+            else
+              if [ "${{ steps.mode.outputs.mode }}" = "strict" ]; then
+                echo "- ❌ One or more templates failed schema validation. Blocking merge (strict mode)."
+              else
+                echo "- ⚠️ One or more templates failed schema validation. Not blocking merge (warn mode)."
+              fi
+              echo ""
+              echo "Check the **Annotations** tab for file-specific errors."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Exit non-zero only in strict mode
+          if [ "${{ steps.mode.outputs.mode }}" = "strict" ] && [ $ERR -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Summary when no templates
+        if: steps.has_templates.outputs.found != 'true'
+        run: |
+          echo "### Template Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ℹ️ No templates directory/files found. Nothing to validate." >> "$GITHUB_STEP_SUMMARY"
