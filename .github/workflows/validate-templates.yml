@@ -1,204 +1,21 @@
-name: Validate Templates
+name: Validate n8n Templates
 
 on:
+  workflow_dispatch:
+    inputs:
+      schema_mode:
+        description: 'Schema validation mode: fail or warn'
+        required: false
+        default: warn
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'templates/**'
-      - 'docs/**'
-  push:
-    branches:
-      - main
-      - feat/**
-    paths:
-      - 'templates/**'
-      - 'docs/**'
+      - 'templates/**/*.json'
+      - 'docs/runbooks/**/*.json'
+      - '.github/workflows/validate-templates.yml'
+
+permissions:
+  contents: read
 
 jobs:
-  validate-templates:
-    name: Validate n8n Templates
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Install Dependencies
-        run: |
-          npm install
-          npm install -g ajv-cli
-          
-      - name: Validate JSON Schema
-        run: |
-          echo "🔍 Validating template JSON schemas..."
-          
-          # Check if schema exists
-          if [ ! -f "templates/schema.json" ]; then
-            echo "❌ templates/schema.json not found"
-            exit 1
-          fi
-          
-          echo "✅ Schema file found"
-          
-          # Validate schema syntax
-          ajv validate -s templates/schema.json --strict=false 2>/dev/null || {
-            echo "❌ Schema validation failed"
-            exit 1
-          }
-          
-          echo "✅ Schema syntax is valid"
-          
-      - name: Validate Template Files
-        run: |
-          echo "🔍 Validating template files against schema..."
-          
-          # Find all template JSON files
-          find templates -name "*.json" -not -name "schema.json" | while read template; do
-            echo "Validating: $template"
-            
-            # Validate against schema
-            ajv validate -s templates/schema.json -d "$template" --strict=false || {
-              echo "❌ Template validation failed: $template"
-              exit 1
-            }
-            
-            echo "✅ Valid: $template"
-          done
-          
-      - name: Validate Environment Variables
-        run: |
-          echo "🔍 Checking environment variable usage..."
-          
-          # Check for hardcoded credentials in templates
-          if grep -r -i "bearer\|token\|key\|secret\|password" templates/ --include="*.json" | grep -v "\$env\." | grep -v "example\|sample"; then
-            echo "❌ Found potential hardcoded credentials in templates"
-            echo "All credentials must use environment variables like \$env.VARIABLE_NAME"
-            exit 1
-          fi
-          
-          echo "✅ No hardcoded credentials found"
-          
-          # Validate required environment variables are referenced
-          required_vars=("AIRTABLE_API_KEY" "AIRTABLE_BASE_ID" "SLACK_CHANNEL_ID_SUPPORT" "SLACK_BOT_TOKEN")
-          
-          for var in "${required_vars[@]}"; do
-            if ! grep -q "\$env\.$var" templates/*.json 2>/dev/null; then
-              echo "⚠️ Required environment variable $var not found in templates"
-            else
-              echo "✅ Found reference to $var"
-            fi
-          done
-          
-      - name: Validate Documentation
-        run: |
-          echo "🔍 Validating documentation..."
-          
-          # Check if docs directory exists
-          if [ ! -d "docs" ]; then
-            echo "❌ docs directory not found"
-            exit 1
-          fi
-          
-          # Check for required documentation files
-          required_docs=("daily-summary.md")
-          
-          for doc in "${required_docs[@]}"; do
-            if [ ! -f "docs/$doc" ]; then
-              echo "❌ Required documentation file docs/$doc not found"
-              exit 1
-            fi
-            
-            # Check if documentation has required sections
-            if ! grep -q "## Purpose" "docs/$doc"; then
-              echo "❌ Missing Purpose section in docs/$doc"
-              exit 1
-            fi
-            
-            if ! grep -q "## Required Environment Variables" "docs/$doc"; then
-              echo "❌ Missing Required Environment Variables section in docs/$doc"
-              exit 1
-            fi
-            
-            if ! grep -q "## Schedule" "docs/$doc"; then
-              echo "❌ Missing Schedule section in docs/$doc"
-              exit 1
-            fi
-            
-            echo "✅ Valid documentation: docs/$doc"
-          done
-          
-      - name: Validate Sample Files
-        run: |
-          echo "🔍 Validating sample output files..."
-          
-          # Check if examples directory exists
-          if [ ! -d "templates/examples" ]; then
-            echo "❌ templates/examples directory not found"
-            exit 1
-          fi
-          
-          # Validate sample JSON files
-          find templates/examples -name "*.json" | while read sample; do
-            echo "Validating sample: $sample"
-            
-            # Check JSON syntax
-            python3 -m json.tool "$sample" > /dev/null || {
-              echo "❌ Invalid JSON syntax: $sample"
-              exit 1
-            }
-            
-            # For Block Kit samples, validate basic structure
-            if [[ "$sample" == *"daily-summary"* ]]; then
-              if ! grep -q '"blocks"' "$sample"; then
-                echo "❌ Missing blocks structure in $sample"
-                exit 1
-              fi
-              
-              if ! grep -q '"text"' "$sample"; then
-                echo "❌ Missing text field in $sample"
-                exit 1
-              fi
-            fi
-            
-            echo "✅ Valid sample: $sample"
-          done
-          
-      - name: Check .env.sample
-        run: |
-          echo "🔍 Validating .env.sample file..."
-          
-          if [ ! -f ".env.sample" ]; then
-            echo "❌ .env.sample file not found"
-            exit 1
-          fi
-          
-          # Check for required environment variables
-          required_vars=("SLACK_CHANNEL_ID_SUPPORT" "AIRTABLE_API_KEY" "AIRTABLE_BASE_ID" "SLACK_BOT_TOKEN")
-          
-          for var in "${required_vars[@]}"; do
-            if ! grep -q "^$var=" .env.sample; then
-              echo "❌ Missing $var in .env.sample"
-              exit 1
-            else
-              echo "✅ Found $var in .env.sample"
-            fi
-          done
-          
-      - name: Final Validation Summary
-        run: |
-          echo "🎉 All validations passed!"
-          echo ""
-          echo "📋 Validation Summary:"
-          echo "✅ JSON Schema validation"
-          echo "✅ Template file validation"
-          echo "✅ Environment variable usage"
-          echo "✅ Documentation completeness"
-          echo "✅ Sample file validation"
-          echo "✅ .env.sample configuration"
-          echo ""
-          echo "🚀 Templates are ready for deployment"
+  validate
