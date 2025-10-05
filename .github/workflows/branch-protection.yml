@@ -6,9 +6,9 @@ on:
       dry_run:
         description: 'Print what would change without applying it'
         required: false
-        default: 'false'
+        default: 'true'
         type: choice
-        options: ['false', 'true']
+        options: ['true', 'false']
       branch:
         description: 'Branch to protect'
         required: false
@@ -16,7 +16,9 @@ on:
   push:
     branches: [main]
 
-# GITHUB_TOKEN can't modify branch protection; we use a PAT secret instead.
+# NOTE: GITHUB_TOKEN cannot modify branch protection.
+# Create a fine-grained PAT with Repository -> Administration: Read & write,
+# and save it as the repo/org secret BRANCH_PROTECT_TOKEN.
 permissions:
   contents: read
 
@@ -31,57 +33,70 @@ jobs:
       - name: Compose payload & (optionally) apply protection
         shell: bash
         env:
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
           TARGET_BRANCH: ${{ github.event.inputs.branch || 'main' }}
           REPO: ${{ github.repository }}
           GH_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECT_TOKEN }}
         run: |
-          set -euo pipefail
+          set -u
+
           echo "Repository : ${REPO}"
           echo "Branch     : ${TARGET_BRANCH}"
           echo "Dry Run    : ${DRY_RUN}"
 
-          # --- Branch protection policy (edit as needed) ---
+          if [ -z "${GH_ADMIN_TOKEN:-}" ]; then
+            echo "::error::Missing secret BRANCH_PROTECT_TOKEN (fine-grained PAT with Administration: Read & write)"
+            exit 1
+          fi
+
+          # -------- Minimal, broadly compatible policy --------
+          # Adjust later once applied successfully.
           read -r -d '' PROTECTION_PAYLOAD <<'JSON'
           {
-            "required_status_checks": {
-              "strict": true,
-              "contexts": []
-            },
+            "required_status_checks": null,
             "enforce_admins": true,
             "required_pull_request_reviews": {
               "dismiss_stale_reviews": true,
-              "require_code_owner_reviews": true,
+              "require_code_owner_reviews": false,
               "required_approving_review_count": 1
             },
             "restrictions": null
           }
           JSON
-          # -------------------------------------------------
-
-          echo "Payload:"
-          echo "${PROTECTION_PAYLOAD}" | jq .
+          # ----------------------------------------------------
 
           TARGET_URL="${API}/repos/${REPO}/branches/${TARGET_BRANCH}/protection"
 
+          echo "Target URL : ${TARGET_URL}"
+          echo "Payload    :"
+          echo "${PROTECTION_PAYLOAD}"
+
           if [ "${DRY_RUN}" = "true" ]; then
-            echo "[DRY RUN] Would PUT to: ${TARGET_URL}"
+            echo "[DRY RUN] No changes sent."
             exit 0
           fi
 
-          if [ -z "${GH_ADMIN_TOKEN}" ]; then
-            echo "::error::Missing secret BRANCH_PROTECT_TOKEN (fine-grained PAT with Administration: Read&write)"
-            exit 1
-          fi
-
           echo "Applying branch protection…"
-          curl -fsSL -X PUT \
+          # Capture body and status separately for clear errors.
+          RESPONSE="$(curl -sS -X PUT \
             -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${TARGET_URL}" \
-            -d "${PROTECTION_PAYLOAD}"
+            -d "${PROTECTION_PAYLOAD}" \
+            -w "\n%{http_code}")"
 
-          echo "Branch protection applied."
+          STATUS="${RESPONSE##*$'\n'}"
+          BODY="${RESPONSE%$'\n'$STATUS}"
+
+          echo "HTTP Status: ${STATUS}"
+          if [ "${STATUS}" != "200" ] && [ "${STATUS}" != "201" ]; then
+            echo "::error::GitHub API error when applying protection"
+            echo "Response body:"
+            echo "${BODY}"
+            exit 1
+          fi
+
+          echo "Branch protection applied successfully."
 
       - name: Show resulting protection (confirmation)
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -91,7 +106,15 @@ jobs:
           REPO: ${{ github.repository }}
           GH_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECT_TOKEN }}
         run: |
-          curl -fsSL \
+          set -u
+          TARGET_URL="https://api.github.com/repos/${REPO}/branches/${TARGET_BRANCH}/protection"
+          RESPONSE="$(curl -sS \
             -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "${{ env.API }}/repos/${REPO}/branches/${TARGET_BRANCH}/protection" | jq .
+            "${TARGET_URL}" \
+            -w "\n%{http_code}")"
+          STATUS="${RESPONSE##*$'\n'}"
+          BODY="${RESPONSE%$'\n'$STATUS}"
+          echo "HTTP Status: ${STATUS}"
+          echo "Protection state:"
+          echo "${BODY}"
