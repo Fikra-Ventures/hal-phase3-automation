@@ -1,54 +1,88 @@
-name: Configure Branch Protection
+name: Branch Protection
+
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'If true, only print what would change (no write).'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      branch:
+        description: 'Branch to protect'
+        required: false
+        default: 'main'
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  administration: write
+
 env:
-  GH_OWNER: Fikra-Ventures
   API: https://api.github.com
 
 jobs:
   protect:
+    name: Apply Branch Protection
     runs-on: ubuntu-latest
     steps:
-      - name: Determine default branch
-        id: def
+      - name: Compose payload & (optionally) apply protection
         shell: bash
-        run: |
-          REPO="${GITHUB_REPOSITORY#*/}"
-          DEF=$(curl -s -H "Accept: application/vnd.github+json" \
-                     -H "Authorization: Bearer ${{ secrets.BRANCH_PROTECT_TOKEN }}" \
-                     -H "X-GitHub-Api-Version: 2022-11-28" \
-                     "$API/repos/$GH_OWNER/$REPO" | jq -r '.default_branch')
-          echo "default=$DEF" >> $GITHUB_OUTPUT
-
-      - name: Apply branch protection to default branch
-        shell: bash
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          TARGET_BRANCH: ${{ github.event.inputs.branch || 'main' }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          REPO="${GITHUB_REPOSITORY#*/}"
-          BRANCH="${{ steps.def.outputs.default }}"
-          BODY=$(cat <<'JSON'
+          echo "Repository : ${REPO}"
+          echo "Branch     : ${TARGET_BRANCH}"
+          echo "Dry Run    : ${DRY_RUN}"
+
+          # Policy payload (edit to your needs)
+          read -r -d '' PROTECTION_PAYLOAD <<'JSON'
           {
-            "required_status_checks": { "strict": true, "contexts": [] },
+            "required_status_checks": {
+              "strict": true,
+              "contexts": []
+            },
             "enforce_admins": true,
             "required_pull_request_reviews": {
               "dismiss_stale_reviews": true,
-              "require_code_owner_reviews": false,
+              "require_code_owner_reviews": true,
               "required_approving_review_count": 1
             },
-            "restrictions": null,
-            "allow_force_pushes": false,
-            "allow_deletions": false
+            "restrictions": null
           }
           JSON
-          )
-          curl -sS -X PUT \
+
+          echo "Payload:"; echo "${PROTECTION_PAYLOAD}" | jq .
+
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "[DRY RUN] Would PUT:"
+            echo "  ${API}/repos/${REPO}/branches/${TARGET_BRANCH}/protection"
+            exit 0
+          fi
+
+          curl -fsSL -X PUT \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.BRANCH_PROTECT_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -d "$BODY" \
-            "$API/repos/$GH_OWNER/$REPO/branches/$BRANCH/protection" \
-            | jq -e . >/dev/null
-          echo "Applied protection to $BRANCH in $REPO"
+            "${API}/repos/${REPO}/branches/${TARGET_BRANCH}/protection" \
+            -d "${PROTECTION_PAYLOAD}"
+
+          echo "Branch protection applied."
+
+      - name: Show resulting protection (confirmation)
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.event.inputs.branch || 'main' }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${{ env.API }}/repos/${REPO}/branches/${TARGET_BRANCH}/protection" | jq .
