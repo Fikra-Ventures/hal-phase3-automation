@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'If true, only print what would change (no write).'
+        description: 'Print what would change without applying it'
         required: false
         default: 'false'
         type: choice
@@ -16,9 +16,9 @@ on:
   push:
     branches: [main]
 
+# GITHUB_TOKEN can't modify branch protection; we use a PAT secret instead.
 permissions:
   contents: read
-  administration: write
 
 env:
   API: https://api.github.com
@@ -34,14 +34,14 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           TARGET_BRANCH: ${{ github.event.inputs.branch || 'main' }}
           REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECT_TOKEN }}
         run: |
           set -euo pipefail
           echo "Repository : ${REPO}"
           echo "Branch     : ${TARGET_BRANCH}"
           echo "Dry Run    : ${DRY_RUN}"
 
-          # Policy payload (edit to your needs)
+          # --- Branch protection policy (edit as needed) ---
           read -r -d '' PROTECTION_PAYLOAD <<'JSON'
           {
             "required_status_checks": {
@@ -57,19 +57,28 @@ jobs:
             "restrictions": null
           }
           JSON
+          # -------------------------------------------------
 
-          echo "Payload:"; echo "${PROTECTION_PAYLOAD}" | jq .
+          echo "Payload:"
+          echo "${PROTECTION_PAYLOAD}" | jq .
+
+          TARGET_URL="${API}/repos/${REPO}/branches/${TARGET_BRANCH}/protection"
 
           if [ "${DRY_RUN}" = "true" ]; then
-            echo "[DRY RUN] Would PUT:"
-            echo "  ${API}/repos/${REPO}/branches/${TARGET_BRANCH}/protection"
+            echo "[DRY RUN] Would PUT to: ${TARGET_URL}"
             exit 0
           fi
 
+          if [ -z "${GH_ADMIN_TOKEN}" ]; then
+            echo "::error::Missing secret BRANCH_PROTECT_TOKEN (fine-grained PAT with Administration: Read&write)"
+            exit 1
+          fi
+
+          echo "Applying branch protection…"
           curl -fsSL -X PUT \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "${API}/repos/${REPO}/branches/${TARGET_BRANCH}/protection" \
+            "${TARGET_URL}" \
             -d "${PROTECTION_PAYLOAD}"
 
           echo "Branch protection applied."
@@ -80,9 +89,9 @@ jobs:
         env:
           TARGET_BRANCH: ${{ github.event.inputs.branch || 'main' }}
           REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECT_TOKEN }}
         run: |
           curl -fsSL \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${{ env.API }}/repos/${REPO}/branches/${TARGET_BRANCH}/protection" | jq .
