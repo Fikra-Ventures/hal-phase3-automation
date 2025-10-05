@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Print what would change without applying it'
+        description: 'Preview only (no write) when true'
         required: false
         default: 'true'
         type: choice
@@ -13,12 +13,9 @@ on:
         description: 'Branch to protect'
         required: false
         default: 'main'
-  push:
-    branches: [main]
 
-# NOTE: GITHUB_TOKEN cannot modify branch protection.
-# Create a fine-grained PAT with Repository -> Administration: Read & write,
-# and save it as the repo/org secret BRANCH_PROTECT_TOKEN.
+# GITHUB_TOKEN cannot modify branch protection.
+# Create a fine-grained PAT and store it as BRANCH_PROTECT_TOKEN (org/repo secret).
 permissions:
   contents: read
 
@@ -39,18 +36,11 @@ jobs:
           GH_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECT_TOKEN }}
         run: |
           set -u
-
           echo "Repository : ${REPO}"
           echo "Branch     : ${TARGET_BRANCH}"
           echo "Dry Run    : ${DRY_RUN}"
 
-          if [ -z "${GH_ADMIN_TOKEN:-}" ]; then
-            echo "::error::Missing secret BRANCH_PROTECT_TOKEN (fine-grained PAT with Administration: Read & write)"
-            exit 1
-          fi
-
-          # -------- Minimal, broadly compatible policy --------
-          # Adjust later once applied successfully.
+          # Minimal, broadly compatible policy
           read -r -d '' PROTECTION_PAYLOAD <<'JSON'
           {
             "required_status_checks": null,
@@ -63,21 +53,26 @@ jobs:
             "restrictions": null
           }
           JSON
-          # ----------------------------------------------------
 
           TARGET_URL="${API}/repos/${REPO}/branches/${TARGET_BRANCH}/protection"
-
           echo "Target URL : ${TARGET_URL}"
           echo "Payload    :"
           echo "${PROTECTION_PAYLOAD}"
 
+          # Dry-run path (no secret required, no API call)
           if [ "${DRY_RUN}" = "true" ]; then
-            echo "[DRY RUN] No changes sent."
+            echo "[DRY RUN] Would PUT to:"
+            echo "  ${TARGET_URL}"
             exit 0
           fi
 
+          # Real apply requires PAT with Administration: Read & write
+          if [ -z "${GH_ADMIN_TOKEN:-}" ]; then
+            echo "::error::Missing secret BRANCH_PROTECT_TOKEN (fine-grained PAT with Administration: Read & write, Metadata: Read)"
+            exit 1
+          fi
+
           echo "Applying branch protection…"
-          # Capture body and status separately for clear errors.
           RESPONSE="$(curl -sS -X PUT \
             -H "Authorization: Bearer ${GH_ADMIN_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
@@ -87,15 +82,12 @@ jobs:
 
           STATUS="${RESPONSE##*$'\n'}"
           BODY="${RESPONSE%$'\n'$STATUS}"
-
           echo "HTTP Status: ${STATUS}"
           if [ "${STATUS}" != "200" ] && [ "${STATUS}" != "201" ]; then
-            echo "::error::GitHub API error when applying protection"
-            echo "Response body:"
+            echo "::error::GitHub API error applying protection"
             echo "${BODY}"
             exit 1
           fi
-
           echo "Branch protection applied successfully."
 
       - name: Show resulting protection (confirmation)
