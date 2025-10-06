@@ -1,0 +1,7 @@
+name: Branch Protection (Auto)
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'
+# …(same apply logic, but hard-code dry_run=false)…
