@@ -1,0 +1,15 @@
+name: Branch Protection (Manual)
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Preview only (no write) when true'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true','false']
+      branch:
+        description: 'Branch to protect'
+        required: false
+        default: 'main'
+# …(keep the rest of the manual workflow body you already have)…
